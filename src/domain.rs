@@ -1,20 +1,13 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Value {
-    Str(String),
-    Int(i64),
-    Float(f64),
-    Bool(bool),
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Element {
     pub name: String,
-    pub params: HashMap<String, Value>,
+    pub params: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ValueType {
     Str,
     Int,
@@ -22,40 +15,57 @@ pub enum ValueType {
     Bool,
 }
 
-#[derive(Debug, Clone)]
+fn default_required() -> bool {
+    true
+}
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
+fn default_allow_unknown_keys() -> bool {
+    false
+}
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeySpec {
     pub ty: ValueType,
+
+    #[serde(default = "default_required", skip_serializing_if = "is_true")]
     pub required: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ElementSchema {
+    #[serde(rename = "values")]
     pub allowed: HashMap<String, KeySpec>,
+
+    #[serde(default = "default_allow_unknown_keys", skip_serializing_if = "is_false")]
     pub allow_unknown_keys: bool,
 }
 
-#[derive(Debug, Clone)]
-pub struct ElementSchemas {
-    by_element_name: HashMap<String, ElementSchema>,
-}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ElementSchemas(pub HashMap<String, ElementSchema>);
 
 impl ElementSchemas {
-    pub fn new(by_element_name: HashMap<String, ElementSchema>) -> Self {
-        Self { by_element_name }
+    pub fn new(map: HashMap<String, ElementSchema>) -> Self {
+        Self(map)
     }
 
     pub fn schema_for(&self, element_name: &str) -> Option<&ElementSchema> {
-        self.by_element_name.get(element_name)
+        self.0.get(element_name)
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationError {
     pub key: Option<String>,
     pub message: String,
 }
 
-/// High-level validator that composes the individual steps.
 pub fn validate_element(
     element_schemas: &ElementSchemas,
     element: &Element,
@@ -72,8 +82,6 @@ pub fn validate_element(
     if errors.is_empty() { Ok(()) } else { Err(errors) }
 }
 
-/// Step 1: validate that the element name exists and return the schema if it does.
-/// Since a missing schema makes further validation meaningless, this returns a single error.
 pub fn validate_element_name<'a>(
     element_schemas: &'a ElementSchemas,
     element_name: &str,
@@ -82,13 +90,11 @@ pub fn validate_element_name<'a>(
         Some(schema) => Ok(schema),
         None => Err(ValidationError {
             key: None,
-            message: format!("Unknown element name '{}', element_name),
+            message: format!("Unknown element name '{}'", element_name),
         }),
     }
 }
 
-/// Step 2: validate that all provided keys are allowed (if unknown keys are disallowed),
-/// and that all required keys are present.
 pub fn validate_keys_names(
     element_schema: &ElementSchema,
     element: &Element,
@@ -115,7 +121,6 @@ pub fn validate_keys_names(
     }
 }
 
-/// Step 3: validate types of values for keys that are present in both params and schema.
 pub fn validate_values(
     element_schema: &ElementSchema,
     element: &Element,
@@ -124,19 +129,20 @@ pub fn validate_values(
     for (key, key_spec) in &element_schema.allowed {
         let Some(value) = element.params.get(key) else { continue };
 
-        let type_matches = match (key_spec.ty, value) {
-            (ValueType::Str, Value::Str(_)) => true,
-            (ValueType::Int, Value::Int(_)) => true,
-            (ValueType::Float, Value::Float(_)) => true,
-            (ValueType::Bool, Value::Bool(_)) => true,
-            _ => false,
-        };
-
-        if !type_matches {
+        if !json_value_matches_type(value, key_spec.ty) {
             errors.push(ValidationError {
                 key: Some(key.clone()),
                 message: format!("Wrong type (expected {:?})", key_spec.ty),
             });
         }
+    }
+}
+
+pub fn json_value_matches_type(value: &serde_json::Value, expected: ValueType) -> bool {
+    match expected {
+        ValueType::Str => value.is_string(),
+        ValueType::Bool => value.is_boolean(),
+        ValueType::Int => value.as_i64().is_some(),
+        ValueType::Float => value.is_number(),
     }
 }
