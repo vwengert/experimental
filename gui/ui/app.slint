@@ -1,4 +1,4 @@
-import { Button, ComboBox, ScrollView, VerticalBox, HorizontalBox, LineEdit, GroupBox } from "std-widgets.slint";
+import { Button, ComboBox, ScrollView, VerticalBox, HorizontalBox, LineEdit } from "std-widgets.slint";
 
 struct KeyValuePair {
     key: string,
@@ -8,6 +8,20 @@ struct KeyValuePair {
 struct LineItem {
     title: string,
     pairs: [KeyValuePair],
+}
+
+enum ActionType {
+    add-line,
+    value-changed,
+    line-type-changed,
+}
+
+struct Action {
+    action-type: ActionType,
+    schema-name: string,
+    line-index: int,
+    pair-index: int,
+    new-value: string,
 }
 
 export component AppWindow inherits Window {
@@ -20,8 +34,7 @@ export component AppWindow inherits Window {
     in property <[string]> schema-names;
     in-out property <[LineItem]> lines;
 
-    callback add-line(string);
-    callback value-changed(int, int, string);
+    callback dispatch(Action);
 
     VerticalBox {
         HorizontalBox {
@@ -36,7 +49,13 @@ export component AppWindow inherits Window {
             Button {
                 text: "Add Line";
                 clicked => {
-                    root.add-line(schema-selector.current-value);
+                    root.dispatch({
+                        action-type: ActionType.add-line,
+                        schema-name: schema-selector.current-value,
+                        line-index: 0,
+                        pair-index: 0,
+                        new-value: "",
+                    });
                 }
             }
         }
@@ -47,12 +66,28 @@ export component AppWindow inherits Window {
                 padding: 8px;
                 alignment: start;
 
-                for line[i] in root.lines: GroupBox {
-                    title: line.title;
+                for line[i] in root.lines: Rectangle {
+                    border-width: 1px;
+                    border-color: #cccccc;
+                    border-radius: 4px;
 
                     VerticalLayout {
                         spacing: 4px;
-                        padding: 4px;
+                        padding: 8px;
+
+                        ComboBox {
+                            model: root.schema-names;
+                            current-value: line.title;
+                            selected(value) => {
+                                root.dispatch({
+                                    action-type: ActionType.line-type-changed,
+                                    schema-name: value,
+                                    line-index: i,
+                                    pair-index: 0,
+                                    new-value: "",
+                                });
+                            }
+                        }
 
                         for pair[j] in line.pairs: HorizontalBox {
                             alignment: start;
@@ -68,7 +103,13 @@ export component AppWindow inherits Window {
                                 text: pair.value;
                                 min-width: 300px;
                                 edited(new-value) => {
-                                    root.value-changed(i, j, new-value);
+                                    root.dispatch({
+                                        action-type: ActionType.value-changed,
+                                        schema-name: "",
+                                        line-index: i,
+                                        pair-index: j,
+                                        new-value: new-value,
+                                    });
                                 }
                             }
                         }

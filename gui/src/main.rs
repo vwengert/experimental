@@ -30,48 +30,78 @@ fn main() {
     let pairs_models: Rc<RefCell<Vec<Rc<VecModel<KeyValuePair>>>>> =
         Rc::new(RefCell::new(Vec::new()));
 
-    // Callback: add a new line for the selected schema
     let schemas_clone = schemas.clone();
     let lines_model_clone = lines_model.clone();
-    let pairs_models_add = pairs_models.clone();
-    app.on_add_line(move |schema_name| {
-        let name = schema_name.as_str();
-        if name.is_empty() {
-            return;
-        }
-        if let Some(schema) = schemas_clone.schema_for(name) {
-            let mut pairs: Vec<KeyValuePair> = schema
-                .allowed
-                .keys()
-                .map(|k| KeyValuePair {
-                    key: SharedString::from(k.as_str()),
-                    value: SharedString::new(),
-                })
-                .collect();
-            // Sort keys for consistent display order
-            pairs.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
+    let pairs_models_clone = pairs_models.clone();
 
-            let pairs_vec = Rc::new(VecModel::from(pairs));
-            let pairs_model_rc = ModelRc::from(pairs_vec.clone());
-            pairs_models_add.borrow_mut().push(pairs_vec);
+    // Single dispatch callback that handles all actions
+    app.on_dispatch(move |action| {
+        match action.action_type {
+            ActionType::AddLine => {
+                let name = action.schema_name.as_str();
+                if name.is_empty() {
+                    return;
+                }
+                if let Some(schema) = schemas_clone.schema_for(name) {
+                    let mut pairs: Vec<KeyValuePair> = schema
+                        .allowed
+                        .keys()
+                        .map(|k| KeyValuePair {
+                            key: SharedString::from(k.as_str()),
+                            value: SharedString::new(),
+                        })
+                        .collect();
+                    // Sort keys for consistent display order
+                    pairs.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
 
-            lines_model_clone.push(LineItem {
-                title: schema_name.clone(),
-                pairs: pairs_model_rc,
-            });
-        }
-    });
+                    let pairs_vec = Rc::new(VecModel::from(pairs));
+                    let pairs_model_rc = ModelRc::from(pairs_vec.clone());
+                    pairs_models_clone.borrow_mut().push(pairs_vec);
 
-    // Callback: update a value when the user edits a field
-    let pairs_models_edit = pairs_models.clone();
-    app.on_value_changed(move |line_index, pair_index, new_value| {
-        let li = line_index as usize;
-        let pi = pair_index as usize;
-        let borrowed = pairs_models_edit.borrow();
-        if let Some(pairs_model) = borrowed.get(li) {
-            if let Some(mut pair) = pairs_model.row_data(pi) {
-                pair.value = new_value;
-                pairs_model.set_row_data(pi, pair);
+                    lines_model_clone.push(LineItem {
+                        title: action.schema_name.clone(),
+                        pairs: pairs_model_rc,
+                    });
+                }
+            }
+            ActionType::ValueChanged => {
+                let li = action.line_index as usize;
+                let pi = action.pair_index as usize;
+                let borrowed = pairs_models_clone.borrow();
+                if let Some(pairs_model) = borrowed.get(li) {
+                    if let Some(mut pair) = pairs_model.row_data(pi) {
+                        pair.value = action.new_value;
+                        pairs_model.set_row_data(pi, pair);
+                    }
+                }
+            }
+            ActionType::LineTypeChanged => {
+                let li = action.line_index as usize;
+                let name = action.schema_name.as_str();
+                if let Some(schema) = schemas_clone.schema_for(name) {
+                    let mut pairs: Vec<KeyValuePair> = schema
+                        .allowed
+                        .keys()
+                        .map(|k| KeyValuePair {
+                            key: SharedString::from(k.as_str()),
+                            value: SharedString::new(),
+                        })
+                        .collect();
+                    pairs.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
+
+                    // Replace the contents of the existing pairs model in-place
+                    let borrowed = pairs_models_clone.borrow();
+                    if let Some(pairs_model) = borrowed.get(li) {
+                        pairs_model.set_vec(pairs);
+                    }
+                    drop(borrowed);
+
+                    // Update the line title
+                    if let Some(mut line) = lines_model_clone.row_data(li) {
+                        line.title = action.schema_name;
+                        lines_model_clone.set_row_data(li, line);
+                    }
+                }
             }
         }
     });
