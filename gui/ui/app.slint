@@ -1,0 +1,80 @@
+import { Button, ComboBox, ScrollView, VerticalBox, HorizontalBox, LineEdit, GroupBox } from "std-widgets.slint";
+
+struct KeyValuePair {
+    key: string,
+    value: string,
+}
+
+struct LineItem {
+    title: string,
+    pairs: [KeyValuePair],
+}
+
+export component AppWindow inherits Window {
+    title: "Schema Elements Editor";
+    min-width: 600px;
+    min-height: 400px;
+    preferred-width: 800px;
+    preferred-height: 600px;
+
+    in property <[string]> schema-names;
+    in-out property <[LineItem]> lines;
+
+    callback add-line(string);
+    callback value-changed(int, int, string);
+
+    VerticalBox {
+        HorizontalBox {
+            alignment: start;
+            padding: 8px;
+            spacing: 8px;
+
+            schema-selector := ComboBox {
+                model: root.schema-names;
+            }
+
+            Button {
+                text: "Add Line";
+                clicked => {
+                    root.add-line(schema-selector.current-value);
+                }
+            }
+        }
+
+        ScrollView {
+            VerticalLayout {
+                spacing: 8px;
+                padding: 8px;
+                alignment: start;
+
+                for line[i] in root.lines: GroupBox {
+                    title: line.title;
+
+                    VerticalLayout {
+                        spacing: 4px;
+                        padding: 4px;
+
+                        for pair[j] in line.pairs: HorizontalBox {
+                            alignment: start;
+                            spacing: 8px;
+
+                            Text {
+                                text: pair.key + ":";
+                                min-width: 150px;
+                                vertical-alignment: center;
+                            }
+
+                            LineEdit {
+                                text: pair.value;
+                                min-width: 300px;
+                                edited(new-value) => {
+                                    root.value-changed(i, j, new-value);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
