@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 mod dispatch;
-use dispatch::{handle_dispatch, AppState};
+use dispatch::{handle_dispatch, read_dir_entries, AppState};
 
 slint::include_modules!();
 
@@ -15,11 +15,11 @@ fn main() {
 
     let app = AppWindow::new().unwrap();
 
-    // Set the default file path to the full absolute path
-    let default_file_path = std::env::current_dir()
-        .map(|d| d.join("lists.json").to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "lists.json".to_string());
-    app.set_current_file_path(SharedString::from(default_file_path.as_str()));
+    // Initialise the file browser to the current working directory
+    let cwd = std::env::current_dir().unwrap_or_default();
+    app.set_file_browser_dir(SharedString::from(cwd.to_string_lossy().as_ref()));
+    let initial_entries = read_dir_entries(&cwd);
+    app.set_file_browser_entries(ModelRc::from(Rc::new(VecModel::from(initial_entries))));
 
     // Populate schema names (sorted for deterministic ordering)
     let mut schema_names: Vec<SharedString> = schemas

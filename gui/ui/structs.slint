@@ -1,4 +1,9 @@
 
+export struct FileEntry {
+    name: string,
+    is-dir: bool,
+}
+
 export struct KeyValuePair {
     key: string,
     value: string,
@@ -22,6 +27,7 @@ export enum ActionType {
     remove-list,
     save-list,
     load-list,
+    navigate-dir,
     exit,
 }
 

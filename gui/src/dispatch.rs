@@ -6,7 +6,7 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use jsonsss::domain::{KeySpec, Schemas};
 
-use crate::{Action, ActionType, AppWindow, KeyValuePair, LineItem};
+use crate::{Action, ActionType, AppWindow, FileEntry, KeyValuePair, LineItem};
 
 // ── Serialisable save-file structures ────────────────────────────────────────
 
@@ -215,6 +215,36 @@ pub fn handle_remove_list(state: &AppState, action: &Action) {
     }
 }
 
+pub fn read_dir_entries(path: &std::path::Path) -> Vec<FileEntry> {
+    let mut entries: Vec<FileEntry> = Vec::new();
+    if let Ok(read_dir) = std::fs::read_dir(path) {
+        for entry in read_dir.flatten() {
+            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            let name = entry.file_name().to_string_lossy().to_string();
+            entries.push(FileEntry { name: SharedString::from(name.as_str()), is_dir });
+        }
+        // Directories first, then files, both sorted alphabetically
+        entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.as_str().cmp(b.name.as_str())));
+    }
+    entries
+}
+
+pub fn handle_navigate_dir(state: &AppState, action: &Action) {
+    let path_str = action.new_value.as_str();
+    if path_str.is_empty() {
+        return;
+    }
+    let canonical = match std::path::Path::new(path_str).canonicalize() {
+        Ok(p) if p.is_dir() => p,
+        _ => return,
+    };
+    let entries = read_dir_entries(&canonical);
+    if let Some(app) = state.app_weak.upgrade() {
+        app.set_file_browser_dir(SharedString::from(canonical.to_string_lossy().as_ref()));
+        app.set_file_browser_entries(ModelRc::from(Rc::new(VecModel::from(entries))));
+    }
+}
+
 pub fn handle_save_list(state: &AppState, action: &Action) {
     let path = action.new_value.as_str();
     if path.is_empty() {
@@ -370,7 +400,11 @@ pub fn handle_dispatch(state: &AppState, action: Action) {
     // Determine dirty-flag impact before consuming action fields
     let marks_dirty = !matches!(
         action.action_type,
-        ActionType::SwitchList | ActionType::SaveList | ActionType::LoadList | ActionType::Exit
+        ActionType::SwitchList
+            | ActionType::SaveList
+            | ActionType::LoadList
+            | ActionType::NavigateDir
+            | ActionType::Exit
     );
 
     match action.action_type {
@@ -384,6 +418,7 @@ pub fn handle_dispatch(state: &AppState, action: Action) {
         ActionType::RemoveList => handle_remove_list(state, &action),
         ActionType::SaveList => handle_save_list(state, &action),
         ActionType::LoadList => handle_load_list(state, &action),
+        ActionType::NavigateDir => handle_navigate_dir(state, &action),
         ActionType::Exit => handle_exit(state),
     }
 
