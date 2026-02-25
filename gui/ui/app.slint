@@ -14,6 +14,8 @@ enum ActionType {
     add-line,
     value-changed,
     line-type-changed,
+    save,
+    load,
 }
 
 struct Action {
@@ -35,6 +37,36 @@ export component AppWindow inherits Window {
     in-out property <[LineItem]> lines;
 
     callback dispatch(Action);
+
+    MenuBar {
+        Menu {
+            title: "File";
+            MenuItem {
+                title: "Load";
+                activated => {
+                    root.dispatch({
+                        action-type: ActionType.load,
+                        schema-name: "",
+                        line-index: 0,
+                        pair-index: 0,
+                        new-value: "",
+                    });
+                }
+            }
+            MenuItem {
+                title: "Save";
+                activated => {
+                    root.dispatch({
+                        action-type: ActionType.save,
+                        schema-name: "",
+                        line-index: 0,
+                        pair-index: 0,
+                        new-value: "",
+                    });
+                }
+            }
+        }
+    }
 
     VerticalBox {
         HorizontalBox {
