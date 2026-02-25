@@ -14,6 +14,7 @@ export component AppWindow inherits Window {
     in-out property <[LineItem]> lines;
     in property <[string]> list-names;
     in-out property <int> active-list-index: 0;
+    in-out property <bool> is-dirty: false;
 
     // File dialog state
     private property <bool> file-dialog-is-save: true;
@@ -38,6 +39,56 @@ export component AppWindow inherits Window {
         }
     }
 
+    // Exit confirmation popup
+    confirm-exit-dialog := PopupWindow {
+        x: (root.width - 320px) / 2;
+        y: (root.height - 140px) / 2;
+        width: 320px;
+        height: 140px;
+        close-policy: PopupClosePolicy.no-auto-close;
+
+        Rectangle {
+            background: #f5f5f5;
+            border-width: 1px;
+            border-color: #999999;
+            border-radius: 6px;
+
+            VerticalBox {
+                padding: 12px;
+                spacing: 8px;
+
+                Text {
+                    text: "You have unsaved changes. Exit anyway?";
+                    wrap: word-wrap;
+                }
+
+                HorizontalBox {
+                    alignment: end;
+                    spacing: 8px;
+
+                    Button {
+                        text: "Cancel";
+                        clicked => { confirm-exit-dialog.close(); }
+                    }
+
+                    Button {
+                        text: "Exit Anyway";
+                        clicked => {
+                            confirm-exit-dialog.close();
+                            root.dispatch({
+                                action-type: ActionType.exit,
+                                schema-name: "",
+                                line-index: 0,
+                                pair-index: 0,
+                                new-value: "",
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // File menu
     MenuBar {
         Menu {
@@ -56,6 +107,23 @@ export component AppWindow inherits Window {
                 activated => {
                     root.file-dialog-is-save = false;
                     file-dialog.show();
+                }
+            }
+
+            MenuItem {
+                title: "Exit";
+                activated => {
+                    if root.is-dirty {
+                        confirm-exit-dialog.show();
+                    } else {
+                        root.dispatch({
+                            action-type: ActionType.exit,
+                            schema-name: "",
+                            line-index: 0,
+                            pair-index: 0,
+                            new-value: "",
+                        });
+                    }
                 }
             }
         }
