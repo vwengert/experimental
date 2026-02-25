@@ -1,0 +1,53 @@
+import { Button, LineEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export component FileDialog inherits PopupWindow {
+    width: 320px;
+    height: 160px;
+    close-policy: PopupClosePolicy.no-auto-close;
+
+    in property <bool> is-save: true;
+    in-out property <string> file-path: "lists.json";
+
+    callback confirmed(string);
+
+    Rectangle {
+        background: #f5f5f5;
+        border-width: 1px;
+        border-color: #999999;
+        border-radius: 6px;
+
+        VerticalBox {
+            padding: 12px;
+            spacing: 8px;
+
+            Text {
+                text: root.is-save ? "Save list to file:" : "Load list from file:";
+                font-weight: 600;
+            }
+
+            file-path-input := LineEdit {
+                text: root.file-path;
+                placeholder-text: "Enter file path…";
+            }
+
+            HorizontalBox {
+                alignment: end;
+                spacing: 8px;
+
+                Button {
+                    text: "Cancel";
+                    clicked => { root.close(); }
+                }
+
+                Button {
+                    text: root.is-save ? "Save" : "Load";
+                    clicked => {
+                        root.file-path = file-path-input.text;
+                        root.confirmed(file-path-input.text);
+                        root.close();
+                    }
+                }
+            }
+        }
+    }
+}

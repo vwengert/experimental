@@ -35,7 +35,8 @@ fn make_pair(key: &str, spec: &jsonsss::domain::KeySpec, units: &std::collection
 struct SavedPair {
     key: String,
     value: String,
-    unit: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unit: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -262,7 +263,7 @@ fn main() {
                             .map(|p| SavedPair {
                                 key: p.key.to_string(),
                                 value: p.value.to_string(),
-                                unit: p.unit.to_string(),
+                                unit: if p.unit.is_empty() { None } else { Some(p.unit.to_string()) },
                             })
                             .collect();
                         saved_lines.push(SavedLine { title, pairs: saved_pairs });
@@ -344,7 +345,7 @@ fn main() {
                                 KeyValuePair {
                                     key: SharedString::from(p.key.as_str()),
                                     value: SharedString::from(p.value.as_str()),
-                                    unit: SharedString::from(p.unit.as_str()),
+                                    unit: SharedString::from(p.unit.as_deref().unwrap_or("")),
                                     unit_options,
                                 }
                             })
