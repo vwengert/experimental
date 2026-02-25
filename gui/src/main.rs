@@ -28,7 +28,7 @@ fn make_pair(key: &str, spec: &jsonsss::domain::KeySpec, units: &std::collection
     }
 }
 
-const LIST_COUNT: usize = 5;
+const LIST_COUNT: usize = 1;
 
 fn main() {
     let schemas = Schemas::load_default();
@@ -44,17 +44,10 @@ fn main() {
     schema_names.sort();
     app.set_schema_names(ModelRc::from(Rc::new(VecModel::from(schema_names))));
 
-    // Populate list names: "own" for index 0, "list N" for the rest
-    let list_names: Vec<SharedString> = (0..LIST_COUNT)
-        .map(|i| {
-            if i == 0 {
-                SharedString::from("own")
-            } else {
-                SharedString::from(format!("list {i}").as_str())
-            }
-        })
-        .collect();
-    app.set_list_names(ModelRc::from(Rc::new(VecModel::from(list_names))));
+    // Populate list names: start with just "own"
+    let list_names_model: Rc<VecModel<SharedString>> =
+        Rc::new(VecModel::from(vec![SharedString::from("own")]));
+    app.set_list_names(ModelRc::from(list_names_model.clone()));
 
     // Create one LineItem model per list
     let list_models: Rc<RefCell<Vec<Rc<VecModel<LineItem>>>>> = Rc::new(RefCell::new(
@@ -79,6 +72,7 @@ fn main() {
     let list_models_clone = list_models.clone();
     let all_pairs_models_clone = all_pairs_models.clone();
     let active_list_idx_clone = active_list_idx.clone();
+    let list_names_clone = list_names_model.clone();
     let app_weak = app.as_weak();
 
     // Single dispatch callback that handles all actions
@@ -171,12 +165,46 @@ fn main() {
             }
             ActionType::SwitchList => {
                 let new_idx = action.line_index as usize;
-                if new_idx < LIST_COUNT {
+                let list_count = list_models_clone.borrow().len();
+                if new_idx < list_count {
                     *active_list_idx_clone.borrow_mut() = new_idx;
                     let new_model = list_models_clone.borrow()[new_idx].clone();
                     if let Some(app) = app_weak.upgrade() {
                         app.set_lines(ModelRc::from(new_model));
                     }
+                }
+            }
+            ActionType::AddList => {
+                let count = list_models_clone.borrow().len();
+                list_models_clone.borrow_mut().push(Rc::new(VecModel::<LineItem>::default()));
+                all_pairs_models_clone
+                    .borrow_mut()
+                    .push(Rc::new(RefCell::new(Vec::new())));
+                list_names_clone.push(SharedString::from(format!("list {count}").as_str()));
+                let new_idx = count;
+                *active_list_idx_clone.borrow_mut() = new_idx;
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_active_list_index(new_idx as i32);
+                    let new_model = list_models_clone.borrow()[new_idx].clone();
+                    app.set_lines(ModelRc::from(new_model));
+                }
+            }
+            ActionType::RemoveList => {
+                let idx = action.line_index as usize;
+                let count = list_models_clone.borrow().len();
+                if idx == 0 || idx >= count {
+                    return;
+                }
+                list_models_clone.borrow_mut().remove(idx);
+                all_pairs_models_clone.borrow_mut().remove(idx);
+                list_names_clone.remove(idx);
+                let current = *active_list_idx_clone.borrow();
+                let new_active = if current >= idx && current > 0 { current - 1 } else { current };
+                *active_list_idx_clone.borrow_mut() = new_active;
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_active_list_index(new_active as i32);
+                    let new_model = list_models_clone.borrow()[new_active].clone();
+                    app.set_lines(ModelRc::from(new_model));
                 }
             }
         }

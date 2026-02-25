@@ -49,6 +49,39 @@ export component AppWindow inherits Window {
                     }
                 }
             }
+
+            Button {
+                text: "+ Add List";
+                clicked => {
+                    root.dispatch({
+                        action-type: ActionType.add-list,
+                        schema-name: "",
+                        line-index: 0,
+                        pair-index: 0,
+                        new-value: "",
+                    });
+                }
+            }
+        }
+
+        // Delete-list toolbar (only visible when a non-first tab is active)
+        if root.active-list-index > 0: HorizontalBox {
+            alignment: start;
+            padding: 4px;
+            spacing: 8px;
+
+            Button {
+                text: "Delete List";
+                clicked => {
+                    root.dispatch({
+                        action-type: ActionType.remove-list,
+                        schema-name: "",
+                        line-index: root.active-list-index,
+                        pair-index: 0,
+                        new-value: "",
+                    });
+                }
+            }
         }
 
         // Add-line toolbar
