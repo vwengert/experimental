@@ -15,58 +15,36 @@ pub enum ValueType {
     Bool,
 }
 
-fn default_required() -> bool {
-    true
-}
-fn is_true(value: &bool) -> bool {
-    *value
-}
-
-fn default_allow_unknown_keys() -> bool {
-    false
-}
-fn is_false(value: &bool) -> bool {
-    !*value
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum UnitSpec {
-    Fixed(String),
-    List(Vec<String>),
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeySpec {
     pub ty: ValueType,
 
-    #[serde(default = "default_required", skip_serializing_if = "is_true")]
-    pub required: bool,
-
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub units: Option<UnitSpec>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ElementSchema {
-    #[serde(rename = "values")]
-    pub allowed: HashMap<String, KeySpec>,
-
-    #[serde(default = "default_allow_unknown_keys", skip_serializing_if = "is_false")]
-    pub allow_unknown_keys: bool,
+    pub unit: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ElementSchemas(pub HashMap<String, ElementSchema>);
+pub struct ElementSchema(pub HashMap<String, KeySpec>);
 
-impl ElementSchemas {
-    pub fn new(map: HashMap<String, ElementSchema>) -> Self {
-        Self(map)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Schemas {
+    pub units: HashMap<String, Vec<String>>,
+    pub elements: HashMap<String, ElementSchema>,
+}
+
+impl Schemas {
+    pub fn schema_for(&self, element_name: &str) -> Option<&ElementSchema> {
+        self.elements.get(element_name)
     }
 
-    pub fn schema_for(&self, element_name: &str) -> Option<&ElementSchema> {
-        self.0.get(element_name)
+    pub fn units_for(&self, unit_type: &str) -> Option<&Vec<String>> {
+        self.units.get(unit_type)
+    }
+
+    pub fn load_default() -> Self {
+        let text = include_str!("./schemas.json");
+        serde_json::from_str(text).expect("Built-in schemas.json is invalid")
     }
 }
 
@@ -77,10 +55,10 @@ pub struct ValidationError {
 }
 
 pub fn validate_element(
-    element_schemas: &ElementSchemas,
+    schemas: &Schemas,
     element: &Element,
 ) -> Result<(), Vec<ValidationError>> {
-    let element_schema = match validate_element_name(element_schemas, &element.name) {
+    let element_schema = match validate_element_name(schemas, &element.name) {
         Ok(schema) => schema,
         Err(error) => return Err(vec![error]),
     };
@@ -93,10 +71,10 @@ pub fn validate_element(
 }
 
 pub fn validate_element_name<'a>(
-    element_schemas: &'a ElementSchemas,
+    schemas: &'a Schemas,
     element_name: &str,
 ) -> Result<&'a ElementSchema, ValidationError> {
-    match element_schemas.schema_for(element_name) {
+    match schemas.schema_for(element_name) {
         Some(schema) => Ok(schema),
         None => Err(ValidationError {
             key: None,
@@ -110,19 +88,17 @@ pub fn validate_keys_names(
     element: &Element,
     errors: &mut Vec<ValidationError>,
 ) {
-    if !element_schema.allow_unknown_keys {
-        for key in element.params.keys() {
-            if !element_schema.allowed.contains_key(key) {
-                errors.push(ValidationError {
-                    key: Some(key.clone()),
-                    message: "Key not allowed for this element type".into(),
-                });
-            }
+    for key in element.params.keys() {
+        if !element_schema.0.contains_key(key) {
+            errors.push(ValidationError {
+                key: Some(key.clone()),
+                message: "Key not allowed for this element type".into(),
+            });
         }
     }
 
-    for (key, key_spec) in &element_schema.allowed {
-        if key_spec.required && !element.params.contains_key(key) {
+    for key in element_schema.0.keys() {
+        if !element.params.contains_key(key) {
             errors.push(ValidationError {
                 key: Some(key.clone()),
                 message: "Missing required key".into(),
@@ -136,7 +112,7 @@ pub fn validate_values(
     element: &Element,
     errors: &mut Vec<ValidationError>,
 ) {
-    for (key, key_spec) in &element_schema.allowed {
+    for (key, key_spec) in &element_schema.0 {
         let Some(value) = element.params.get(key) else { continue };
 
         if !json_value_matches_type(value, key_spec.ty) {

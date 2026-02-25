@@ -1,0 +1,23 @@
+{
+  "units": {
+    "distance": ["m", "km", "miles"],
+    "length": ["px", "em", "rem", "%"]
+  },
+  "elements": {
+    "Button": {
+      "label": { "ty": "Str" },
+      "onClick": { "ty": "Str" },
+      "disabled": { "ty": "Bool" }
+    },
+    "TextField": {
+      "placeholder": { "ty": "Str" },
+      "maxLength": { "ty": "Int" },
+      "value": { "ty": "Str" }
+    },
+    "Container": {
+      "width": { "ty": "Float", "unit": "length" },
+      "height": { "ty": "Float", "unit": "length" },
+      "padding": { "ty": "Int", "unit": "length" }
+    }
+  }
+}

@@ -1,9 +1,6 @@
-use jsonsss::domain::ElementSchemas;
-use jsonsss::io::json_read_string;
+use jsonsss::domain::Schemas;
 
 fn main() {
-    let schemas = include_str!("./schemas.json");
+    let schemas = Schemas::load_default();
     println!("{:#?}", schemas);
-    let schemas = json_read_string::<ElementSchemas>(schemas);
-    println!("Loaded {:?} schemas", schemas);
 }
