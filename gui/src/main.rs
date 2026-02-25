@@ -1,10 +1,30 @@
 use jsonsss::io::json_read_string;
-use jsonsss::domain::ElementSchemas;
+use jsonsss::domain::{ElementSchemas, UnitSpec};
 use slint::{Model, ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 slint::include_modules!();
+
+fn make_pair(key: &str, spec: &jsonsss::domain::KeySpec) -> KeyValuePair {
+    let (unit, unit_options) = match &spec.units {
+        None => (SharedString::new(), ModelRc::from(Rc::new(VecModel::<SharedString>::default()))),
+        Some(UnitSpec::Fixed(s)) => (SharedString::from(s.as_str()), ModelRc::from(Rc::new(VecModel::<SharedString>::default()))),
+        Some(UnitSpec::List(opts)) => {
+            let first = opts.first().map(|s| SharedString::from(s.as_str())).unwrap_or_default();
+            let model: Rc<VecModel<SharedString>> = Rc::new(VecModel::from(
+                opts.iter().map(|s| SharedString::from(s.as_str())).collect::<Vec<_>>(),
+            ));
+            (first, ModelRc::from(model))
+        }
+    };
+    KeyValuePair {
+        key: SharedString::from(key),
+        value: SharedString::new(),
+        unit,
+        unit_options,
+    }
+}
 
 fn main() {
     let schemas_str = include_str!("../../cli/src/schemas.json");
@@ -45,11 +65,8 @@ fn main() {
                 if let Some(schema) = schemas_clone.schema_for(name) {
                     let mut pairs: Vec<KeyValuePair> = schema
                         .allowed
-                        .keys()
-                        .map(|k| KeyValuePair {
-                            key: SharedString::from(k.as_str()),
-                            value: SharedString::new(),
-                        })
+                        .iter()
+                        .map(|(k, spec)| make_pair(k.as_str(), spec))
                         .collect();
                     // Sort keys for consistent display order
                     pairs.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
@@ -75,17 +92,25 @@ fn main() {
                     }
                 }
             }
+            ActionType::UnitChanged => {
+                let li = action.line_index as usize;
+                let pi = action.pair_index as usize;
+                let borrowed = pairs_models_clone.borrow();
+                if let Some(pairs_model) = borrowed.get(li) {
+                    if let Some(mut pair) = pairs_model.row_data(pi) {
+                        pair.unit = action.new_value;
+                        pairs_model.set_row_data(pi, pair);
+                    }
+                }
+            }
             ActionType::LineTypeChanged => {
                 let li = action.line_index as usize;
                 let name = action.schema_name.as_str();
                 if let Some(schema) = schemas_clone.schema_for(name) {
                     let mut pairs: Vec<KeyValuePair> = schema
                         .allowed
-                        .keys()
-                        .map(|k| KeyValuePair {
-                            key: SharedString::from(k.as_str()),
-                            value: SharedString::new(),
-                        })
+                        .iter()
+                        .map(|(k, spec)| make_pair(k.as_str(), spec))
                         .collect();
                     pairs.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
 
