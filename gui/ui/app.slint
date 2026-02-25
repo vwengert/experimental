@@ -1,28 +1,5 @@
 import { Button, ComboBox, ScrollView, VerticalBox, HorizontalBox, LineEdit } from "std-widgets.slint";
-
-struct KeyValuePair {
-    key: string,
-    value: string,
-}
-
-struct LineItem {
-    title: string,
-    pairs: [KeyValuePair],
-}
-
-enum ActionType {
-    add-line,
-    value-changed,
-    line-type-changed,
-}
-
-struct Action {
-    action-type: ActionType,
-    schema-name: string,
-    line-index: int,
-    pair-index: int,
-    new-value: string,
-}
+import { KeyValuePair, LineItem, ActionType, Action } from "structs.slint";
 
 export component AppWindow inherits Window {
     title: "Schema Elements Editor";

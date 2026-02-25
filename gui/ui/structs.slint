@@ -1,0 +1,23 @@
+export struct KeyValuePair {
+    key: string,
+    value: string,
+}
+
+export struct LineItem {
+    title: string,
+    pairs: [KeyValuePair],
+}
+
+export enum ActionType {
+    add-line,
+    value-changed,
+    line-type-changed,
+}
+
+export struct Action {
+    action-type: ActionType,
+    schema-name: string,
+    line-index: int,
+    pair-index: int,
+    new-value: string,
+}
