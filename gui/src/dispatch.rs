@@ -1,39 +1,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use serde::{Deserialize, Serialize};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
-use jsonsss::domain::{KeySpec, Schemas};
+use domain::domain::{ItemData, ItemLine, ItemList, ItemSet};
+use domain::schema::{KeySpec, Schemas};
 
 use crate::{Action, ActionType, AppWindow, FileEntry, KeyValuePair, LineItem};
-
-// ── Serialisable save-file structures ────────────────────────────────────────
-
-#[derive(Serialize, Deserialize)]
-pub struct SavedPair {
-    pub key: String,
-    pub value: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unit: Option<String>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SavedLine {
-    pub title: String,
-    pub pairs: Vec<SavedPair>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SavedList {
-    pub name: String,
-    pub lines: Vec<SavedLine>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SavedData {
-    pub lists: Vec<SavedList>,
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -252,7 +225,7 @@ pub fn handle_save_list(state: &AppState, action: &Action) {
     }
     let list_models_ref = state.list_models.borrow();
     let all_pairs_ref = state.all_pairs_models.borrow();
-    let mut saved_lists: Vec<SavedList> = Vec::new();
+    let mut item_lists: Vec<ItemList> = Vec::new();
     for li in 0..list_models_ref.len() {
         let name = state
             .list_names
@@ -261,25 +234,25 @@ pub fn handle_save_list(state: &AppState, action: &Action) {
             .unwrap_or_default();
         let line_model = &list_models_ref[li];
         let pairs_for_list = all_pairs_ref[li].borrow();
-        let mut saved_lines: Vec<SavedLine> = Vec::new();
+        let mut item_lines: Vec<ItemLine> = Vec::new();
         for (line_idx, pairs_model) in pairs_for_list.iter().enumerate() {
             let title = line_model
                 .row_data(line_idx)
                 .map(|l| l.title.to_string())
                 .unwrap_or_default();
-            let saved_pairs: Vec<SavedPair> = (0..pairs_model.row_count())
+            let item_sets: Vec<ItemSet> = (0..pairs_model.row_count())
                 .filter_map(|pi| pairs_model.row_data(pi))
-                .map(|p| SavedPair {
+                .map(|p| ItemSet {
                     key: p.key.to_string(),
                     value: p.value.to_string(),
                     unit: if p.unit.is_empty() { None } else { Some(p.unit.to_string()) },
                 })
                 .collect();
-            saved_lines.push(SavedLine { title, pairs: saved_pairs });
+            item_lines.push(ItemLine { title, sets: item_sets });
         }
-        saved_lists.push(SavedList { name, lines: saved_lines });
+        item_lists.push(ItemList { name, lines: item_lines });
     }
-    let data = SavedData { lists: saved_lists };
+    let data = ItemData { lists: item_lists };
     if let Ok(json) = serde_json::to_string_pretty(&data) {
         let _ = std::fs::write(path, json);
     }
@@ -298,29 +271,29 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
         Ok(s) => s,
         Err(_) => return,
     };
-    let saved_data: SavedData = match serde_json::from_str(&json) {
+    let item_data: ItemData = match serde_json::from_str(&json) {
         Ok(d) => d,
         Err(_) => return,
     };
-    if saved_data.lists.is_empty() {
+    if item_data.lists.is_empty() {
         return;
     }
 
     let mut new_list_models: Vec<Rc<VecModel<LineItem>>> = Vec::new();
     let mut new_pairs_models: Vec<Rc<RefCell<Vec<Rc<VecModel<KeyValuePair>>>>>> = Vec::new();
 
-    for saved_list in &saved_data.lists {
+    for item_list in &item_data.lists {
         let line_model: Rc<VecModel<LineItem>> = Rc::new(VecModel::<LineItem>::default());
         let pairs_for_list: Rc<RefCell<Vec<Rc<VecModel<KeyValuePair>>>>> =
             Rc::new(RefCell::new(Vec::new()));
 
-        for saved_line in &saved_list.lines {
-            let pairs: Vec<KeyValuePair> = saved_line
-                .pairs
+        for item_line in &item_list.lines {
+            let pairs: Vec<KeyValuePair> = item_line
+                .sets
                 .iter()
                 .map(|p| {
                     let unit_options = if let Some(schema) =
-                        state.schemas.schema_for(&saved_line.title)
+                        state.schemas.schema_for(&item_line.title)
                     {
                         if let Some(key_spec) = schema.0.get(&p.key) {
                             match &key_spec.unit {
@@ -360,7 +333,7 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
             let pairs_vec = Rc::new(VecModel::from(pairs));
             pairs_for_list.borrow_mut().push(pairs_vec.clone());
             line_model.push(LineItem {
-                title: SharedString::from(saved_line.title.as_str()),
+                title: SharedString::from(item_line.title.as_str()),
                 pairs: ModelRc::from(pairs_vec),
             });
         }
@@ -375,8 +348,8 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
     while state.list_names.row_count() > 0 {
         state.list_names.remove(0);
     }
-    for saved_list in &saved_data.lists {
-        state.list_names.push(SharedString::from(saved_list.name.as_str()));
+    for item_list in &item_data.lists {
+        state.list_names.push(SharedString::from(item_list.name.as_str()));
     }
 
     *state.active_list_idx.borrow_mut() = 0;

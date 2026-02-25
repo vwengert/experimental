@@ -1,4 +1,4 @@
-use jsonsss::domain::Schemas;
+use domain::schema::Schemas;
 use slint::{ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;

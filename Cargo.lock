@@ -786,7 +786,7 @@ dependencies = [
 name = "cli"
 version = "0.1.0"
 dependencies = [
- "jsonsss",
+ "domain",
 ]
 
 [[package]]
@@ -1128,6 +1128,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
  "libloading",
+]
+
+[[package]]
+name = "domain"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1786,7 +1794,7 @@ dependencies = [
 name = "gui"
 version = "0.1.0"
 dependencies = [
- "jsonsss",
+ "domain",
  "serde",
  "serde_json",
  "slint",
@@ -2461,14 +2469,6 @@ checksum = "f4eacb0641a310445a4c513f2a5e23e19952e269c6a38887254d5f837a305506"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "jsonsss"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]
