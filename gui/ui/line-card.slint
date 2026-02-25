@@ -57,6 +57,7 @@ export component LineCard inherits Rectangle {
                 text: pair.key + ":";
                 min-width: 150px;
                 vertical-alignment: center;
+                color: black;
             }
 
             LineEdit {
@@ -90,6 +91,7 @@ export component LineCard inherits Rectangle {
             if pair.unit-options.length == 0 && pair.unit != "": Text {
                 text: pair.unit;
                 vertical-alignment: center;
+                color: black;
             }
         }
     }
