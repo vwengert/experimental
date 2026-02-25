@@ -28,6 +28,8 @@ fn make_pair(key: &str, spec: &jsonsss::domain::KeySpec, units: &std::collection
     }
 }
 
+const LIST_COUNT: usize = 5;
+
 fn main() {
     let schemas = Schemas::load_default();
 
@@ -42,20 +44,49 @@ fn main() {
     schema_names.sort();
     app.set_schema_names(ModelRc::from(Rc::new(VecModel::from(schema_names))));
 
-    // Set up the lines model
-    let lines_model = Rc::new(VecModel::<LineItem>::default());
-    app.set_lines(ModelRc::from(lines_model.clone()));
+    // Populate list names: "own" for index 0, "list N" for the rest
+    let list_names: Vec<SharedString> = (0..LIST_COUNT)
+        .map(|i| {
+            if i == 0 {
+                SharedString::from("own")
+            } else {
+                SharedString::from(format!("list {i}").as_str())
+            }
+        })
+        .collect();
+    app.set_list_names(ModelRc::from(Rc::new(VecModel::from(list_names))));
 
-    // Keep references to the inner pair models so we can update them from callbacks
-    let pairs_models: Rc<RefCell<Vec<Rc<VecModel<KeyValuePair>>>>> =
-        Rc::new(RefCell::new(Vec::new()));
+    // Create one LineItem model per list
+    let list_models: Rc<RefCell<Vec<Rc<VecModel<LineItem>>>>> = Rc::new(RefCell::new(
+        (0..LIST_COUNT).map(|_| Rc::new(VecModel::<LineItem>::default())).collect(),
+    ));
+
+    // Create one pairs-models Vec per list
+    let all_pairs_models: Rc<RefCell<Vec<Rc<RefCell<Vec<Rc<VecModel<KeyValuePair>>>>>>>> =
+        Rc::new(RefCell::new(
+            (0..LIST_COUNT)
+                .map(|_| Rc::new(RefCell::new(Vec::<Rc<VecModel<KeyValuePair>>>::new())))
+                .collect(),
+        ));
+
+    // Track active list index
+    let active_list_idx: Rc<RefCell<usize>> = Rc::new(RefCell::new(0));
+
+    // Bind the first list model to the UI
+    app.set_lines(ModelRc::from(list_models.borrow()[0].clone()));
 
     let schemas_clone = schemas.clone();
-    let lines_model_clone = lines_model.clone();
-    let pairs_models_clone = pairs_models.clone();
+    let list_models_clone = list_models.clone();
+    let all_pairs_models_clone = all_pairs_models.clone();
+    let active_list_idx_clone = active_list_idx.clone();
+    let app_weak = app.as_weak();
 
     // Single dispatch callback that handles all actions
     app.on_dispatch(move |action| {
+        let active = *active_list_idx_clone.borrow();
+        let lines_model = list_models_clone.borrow()[active].clone();
+        let pairs_models = all_pairs_models_clone.borrow()[active].clone();
+
         match action.action_type {
             ActionType::AddLine => {
                 let name = action.schema_name.as_str();
@@ -73,9 +104,9 @@ fn main() {
 
                     let pairs_vec = Rc::new(VecModel::from(pairs));
                     let pairs_model_rc = ModelRc::from(pairs_vec.clone());
-                    pairs_models_clone.borrow_mut().push(pairs_vec);
+                    pairs_models.borrow_mut().push(pairs_vec);
 
-                    lines_model_clone.push(LineItem {
+                    lines_model.push(LineItem {
                         title: action.schema_name.clone(),
                         pairs: pairs_model_rc,
                     });
@@ -84,7 +115,7 @@ fn main() {
             ActionType::ValueChanged => {
                 let li = action.line_index as usize;
                 let pi = action.pair_index as usize;
-                let borrowed = pairs_models_clone.borrow();
+                let borrowed = pairs_models.borrow();
                 if let Some(pairs_model) = borrowed.get(li) {
                     if let Some(mut pair) = pairs_model.row_data(pi) {
                         pair.value = action.new_value;
@@ -95,7 +126,7 @@ fn main() {
             ActionType::UnitChanged => {
                 let li = action.line_index as usize;
                 let pi = action.pair_index as usize;
-                let borrowed = pairs_models_clone.borrow();
+                let borrowed = pairs_models.borrow();
                 if let Some(pairs_model) = borrowed.get(li) {
                     if let Some(mut pair) = pairs_model.row_data(pi) {
                         pair.unit = action.new_value;
@@ -115,16 +146,36 @@ fn main() {
                     pairs.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
 
                     // Replace the contents of the existing pairs model in-place
-                    let borrowed = pairs_models_clone.borrow();
+                    let borrowed = pairs_models.borrow();
                     if let Some(pairs_model) = borrowed.get(li) {
                         pairs_model.set_vec(pairs);
                     }
                     drop(borrowed);
 
                     // Update the line title
-                    if let Some(mut line) = lines_model_clone.row_data(li) {
+                    if let Some(mut line) = lines_model.row_data(li) {
                         line.title = action.schema_name;
-                        lines_model_clone.set_row_data(li, line);
+                        lines_model.set_row_data(li, line);
+                    }
+                }
+            }
+            ActionType::RemoveLine => {
+                let li = action.line_index as usize;
+                if li < lines_model.row_count() {
+                    lines_model.remove(li);
+                    let mut borrowed = pairs_models.borrow_mut();
+                    if li < borrowed.len() {
+                        borrowed.remove(li);
+                    }
+                }
+            }
+            ActionType::SwitchList => {
+                let new_idx = action.line_index as usize;
+                if new_idx < LIST_COUNT {
+                    *active_list_idx_clone.borrow_mut() = new_idx;
+                    let new_model = list_models_clone.borrow()[new_idx].clone();
+                    if let Some(app) = app_weak.upgrade() {
+                        app.set_lines(ModelRc::from(new_model));
                     }
                 }
             }
