@@ -10,10 +10,48 @@ export component AppWindow inherits Window {
 
     in property <[string]> schema-names;
     in-out property <[LineItem]> lines;
+    in property <[string]> list-names;
+    in-out property <int> active-list-index: 0;
 
     callback dispatch(Action);
 
     VerticalBox {
+        // Tab bar
+        HorizontalLayout {
+            padding: 4px;
+            spacing: 4px;
+            alignment: start;
+
+            for tab-name[ti] in root.list-names: Rectangle {
+                width: 90px;
+                height: 30px;
+                background: ti == root.active-list-index ? #4a90d9 : #d0d0d0;
+                border-radius: 4px;
+
+                Text {
+                    text: tab-name;
+                    color: ti == root.active-list-index ? #ffffff : #333333;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    font-weight: ti == root.active-list-index ? 700 : 400;
+                }
+
+                TouchArea {
+                    clicked => {
+                        root.active-list-index = ti;
+                        root.dispatch({
+                            action-type: ActionType.switch-list,
+                            schema-name: "",
+                            line-index: ti,
+                            pair-index: 0,
+                            new-value: "",
+                        });
+                    }
+                }
+            }
+        }
+
+        // Add-line toolbar
         HorizontalBox {
             alignment: start;
             padding: 8px;
@@ -52,17 +90,36 @@ export component AppWindow inherits Window {
                         spacing: 4px;
                         padding: 8px;
 
-                        ComboBox {
-                            model: root.schema-names;
-                            current-value: line.title;
-                            selected(value) => {
-                                root.dispatch({
-                                    action-type: ActionType.line-type-changed,
-                                    schema-name: value,
-                                    line-index: i,
-                                    pair-index: 0,
-                                    new-value: "",
-                                });
+                        // Line header: type selector + delete button
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            ComboBox {
+                                model: root.schema-names;
+                                current-value: line.title;
+                                selected(value) => {
+                                    root.dispatch({
+                                        action-type: ActionType.line-type-changed,
+                                        schema-name: value,
+                                        line-index: i,
+                                        pair-index: 0,
+                                        new-value: "",
+                                    });
+                                }
+                            }
+
+                            Button {
+                                text: "✕";
+                                clicked => {
+                                    root.dispatch({
+                                        action-type: ActionType.remove-line,
+                                        schema-name: "",
+                                        line-index: i,
+                                        pair-index: 0,
+                                        new-value: "",
+                                    });
+                                }
                             }
                         }
 
