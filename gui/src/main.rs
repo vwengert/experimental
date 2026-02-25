@@ -15,6 +15,12 @@ fn main() {
 
     let app = AppWindow::new().unwrap();
 
+    // Set the default file path to the full absolute path
+    let default_file_path = std::env::current_dir()
+        .map(|d| d.join("lists.json").to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "lists.json".to_string());
+    app.set_current_file_path(SharedString::from(default_file_path.as_str()));
+
     // Populate schema names (sorted for deterministic ordering)
     let mut schema_names: Vec<SharedString> = schemas
         .elements

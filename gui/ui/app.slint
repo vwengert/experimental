@@ -17,6 +17,7 @@ export component AppWindow inherits Window {
     in property <[string]> list-names;
     in-out property <int> active-list-index: 0;
     in-out property <bool> is-dirty: false;
+    in-out property <string> current-file-path;
 
     // File dialog state
     private property <bool> file-dialog-is-save: true;
@@ -28,7 +29,9 @@ export component AppWindow inherits Window {
         x: (root.width - 320px) / 2;
         y: (root.height - 160px) / 2;
         is-save: root.file-dialog-is-save;
+        file-path: root.current-file-path;
         confirmed(path) => {
+            root.current-file-path = path;
             root.dispatch({
                 action-type: root.file-dialog-is-save
                     ? ActionType.save-list

@@ -6,7 +6,7 @@ export component FileDialog inherits PopupWindow {
     close-policy: PopupClosePolicy.no-auto-close;
 
     in property <bool> is-save: true;
-    in-out property <string> file-path: "lists.json";
+    in-out property <string> file-path;
 
     callback confirmed(string);
 
