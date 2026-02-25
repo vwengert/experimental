@@ -1,19 +1,21 @@
-use jsonsss::io::json_read_string;
-use jsonsss::domain::{ElementSchemas, UnitSpec};
+use jsonsss::domain::Schemas;
 use slint::{Model, ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 slint::include_modules!();
 
-fn make_pair(key: &str, spec: &jsonsss::domain::KeySpec) -> KeyValuePair {
-    let (unit, unit_options) = match &spec.units {
+fn make_pair(key: &str, spec: &jsonsss::domain::KeySpec, units: &std::collections::HashMap<String, Vec<String>>) -> KeyValuePair {
+    let (unit, unit_options) = match &spec.unit {
         None => (SharedString::new(), ModelRc::from(Rc::new(VecModel::<SharedString>::default()))),
-        Some(UnitSpec::Fixed(s)) => (SharedString::from(s.as_str()), ModelRc::from(Rc::new(VecModel::<SharedString>::default()))),
-        Some(UnitSpec::List(opts)) => {
-            let first = opts.first().map(|s| SharedString::from(s.as_str())).unwrap_or_default();
+        Some(unit_type) => {
+            let unit_values: &[String] = units
+                .get(unit_type.as_str())
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
+            let first = unit_values.first().map(|s| SharedString::from(s.as_str())).unwrap_or_default();
             let model: Rc<VecModel<SharedString>> = Rc::new(VecModel::from(
-                opts.iter().map(|s| SharedString::from(s.as_str())).collect::<Vec<_>>(),
+                unit_values.iter().map(|s| SharedString::from(s.as_str())).collect::<Vec<_>>(),
             ));
             (first, ModelRc::from(model))
         }
@@ -27,15 +29,13 @@ fn make_pair(key: &str, spec: &jsonsss::domain::KeySpec) -> KeyValuePair {
 }
 
 fn main() {
-    let schemas_str = include_str!("../../cli/src/schemas.json");
-    let schemas: ElementSchemas =
-        json_read_string(schemas_str).expect("Failed to load schemas.json");
+    let schemas = Schemas::load_default();
 
     let app = AppWindow::new().unwrap();
 
     // Populate schema names (sorted for deterministic ordering)
     let mut schema_names: Vec<SharedString> = schemas
-        .0
+        .elements
         .keys()
         .map(|k| SharedString::from(k.as_str()))
         .collect();
@@ -64,9 +64,9 @@ fn main() {
                 }
                 if let Some(schema) = schemas_clone.schema_for(name) {
                     let mut pairs: Vec<KeyValuePair> = schema
-                        .allowed
+                        .0
                         .iter()
-                        .map(|(k, spec)| make_pair(k.as_str(), spec))
+                        .map(|(k, spec)| make_pair(k.as_str(), spec, &schemas_clone.units))
                         .collect();
                     // Sort keys for consistent display order
                     pairs.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
@@ -108,9 +108,9 @@ fn main() {
                 let name = action.schema_name.as_str();
                 if let Some(schema) = schemas_clone.schema_for(name) {
                     let mut pairs: Vec<KeyValuePair> = schema
-                        .allowed
+                        .0
                         .iter()
-                        .map(|(k, spec)| make_pair(k.as_str(), spec))
+                        .map(|(k, spec)| make_pair(k.as_str(), spec, &schemas_clone.units))
                         .collect();
                     pairs.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
 
