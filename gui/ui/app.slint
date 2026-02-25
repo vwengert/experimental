@@ -1,5 +1,5 @@
 import { Button, ComboBox, Palette, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
-import { LineItem, ActionType, Action } from "structs.slint";
+import { LineItem, ActionType, Action, FileEntry } from "structs.slint";
 import { FileDialog } from "file-dialog.slint";
 import { LineCard } from "line-card.slint";
 
@@ -17,6 +17,9 @@ export component AppWindow inherits Window {
     in property <[string]> list-names;
     in-out property <int> active-list-index: 0;
     in-out property <bool> is-dirty: false;
+    in-out property <string> file-browser-dir;
+    in-out property <[FileEntry]> file-browser-entries;
+    in-out property <string> file-browser-file-name: "lists.json";
 
     // File dialog state
     private property <bool> file-dialog-is-save: true;
@@ -25,9 +28,21 @@ export component AppWindow inherits Window {
 
     // File path popup
     file-dialog := FileDialog {
-        x: (root.width - 320px) / 2;
-        y: (root.height - 160px) / 2;
+        x: (root.width - 600px) / 2;
+        y: (root.height - 460px) / 2;
         is-save: root.file-dialog-is-save;
+        current-dir: root.file-browser-dir;
+        entries: root.file-browser-entries;
+        file-name <=> root.file-browser-file-name;
+        navigate(path) => {
+            root.dispatch({
+                action-type: ActionType.navigate-dir,
+                schema-name: "",
+                line-index: 0,
+                pair-index: 0,
+                new-value: path,
+            });
+        }
         confirmed(path) => {
             root.dispatch({
                 action-type: root.file-dialog-is-save
@@ -101,6 +116,13 @@ export component AppWindow inherits Window {
                 title: "Save";
                 activated => {
                     root.file-dialog-is-save = true;
+                    root.dispatch({
+                        action-type: ActionType.navigate-dir,
+                        schema-name: "",
+                        line-index: 0,
+                        pair-index: 0,
+                        new-value: root.file-browser-dir,
+                    });
                     file-dialog.show();
                 }
             }
@@ -109,6 +131,13 @@ export component AppWindow inherits Window {
                 title: "Load";
                 activated => {
                     root.file-dialog-is-save = false;
+                    root.dispatch({
+                        action-type: ActionType.navigate-dir,
+                        schema-name: "",
+                        line-index: 0,
+                        pair-index: 0,
+                        new-value: root.file-browser-dir,
+                    });
                     file-dialog.show();
                 }
             }

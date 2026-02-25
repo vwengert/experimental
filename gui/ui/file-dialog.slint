@@ -1,13 +1,17 @@
-import { Button, LineEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { Button, LineEdit, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
+import { FileEntry } from "structs.slint";
 
 export component FileDialog inherits PopupWindow {
-    width: 320px;
-    height: 160px;
+    width: 600px;
+    height: 460px;
     close-policy: PopupClosePolicy.no-auto-close;
 
     in property <bool> is-save: true;
-    in-out property <string> file-path: "lists.json";
+    in property <string> current-dir;
+    in property <[FileEntry]> entries;
+    in-out property <string> file-name;
 
+    callback navigate(string);
     callback confirmed(string);
 
     Rectangle {
@@ -21,16 +25,107 @@ export component FileDialog inherits PopupWindow {
             spacing: 8px;
 
             Text {
-                text: root.is-save ? "Save list to file:" : "Load list from file:";
+                text: root.is-save ? "Save list to file" : "Load list from file";
                 font-weight: 600;
                 color: black;
             }
 
-            file-path-input := LineEdit {
-                text: root.file-path;
-                placeholder-text: "Enter file path…";
+            // Current directory bar + Up button
+            HorizontalBox {
+                spacing: 6px;
+
+                Button {
+                    text: "↑ Up";
+                    clicked => {
+                        root.navigate(root.current-dir + "/..");
+                    }
+                }
+
+                Rectangle {
+                    background: white;
+                    border-width: 1px;
+                    border-color: #aaaaaa;
+                    border-radius: 3px;
+                    horizontal-stretch: 1;
+
+                    Text {
+                        text: root.current-dir;
+                        color: #333333;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                }
             }
 
+            // File and folder listing
+            Rectangle {
+                background: white;
+                border-width: 1px;
+                border-color: #aaaaaa;
+                border-radius: 3px;
+                height: 270px;
+
+                ScrollView {
+                    VerticalLayout {
+                        spacing: 0px;
+                        alignment: start;
+
+                        for entry in root.entries: Rectangle {
+                            height: 26px;
+                            background: hov.has-hover ? #cde4fa : transparent;
+
+                            hov := TouchArea {
+                                clicked => {
+                                    if entry.is-dir {
+                                        root.navigate(root.current-dir + "/" + entry.name);
+                                    } else {
+                                        root.file-name = entry.name;
+                                    }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-top: 4px;
+                                padding-bottom: 4px;
+                                spacing: 6px;
+                                alignment: start;
+
+                                Text {
+                                    text: entry.is-dir ? "📁" : "📄";
+                                    vertical-alignment: center;
+                                }
+
+                                Text {
+                                    text: entry.name;
+                                    color: entry.is-dir ? #1a5fa8 : #222222;
+                                    font-weight: entry.is-dir ? 600 : 400;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Filename input
+            HorizontalBox {
+                spacing: 8px;
+
+                Text {
+                    text: "File name:";
+                    vertical-alignment: center;
+                    min-width: 70px;
+                }
+
+                filename-input := LineEdit {
+                    text <=> root.file-name;
+                    placeholder-text: root.is-save ? "Enter filename…" : "Select a file above";
+                    horizontal-stretch: 1;
+                }
+            }
+
+            // Action buttons
             HorizontalBox {
                 alignment: end;
                 spacing: 8px;
@@ -43,8 +138,7 @@ export component FileDialog inherits PopupWindow {
                 Button {
                     text: root.is-save ? "Save" : "Load";
                     clicked => {
-                        root.file-path = file-path-input.text;
-                        root.confirmed(file-path-input.text);
+                        root.confirmed(root.current-dir + "/" + filename-input.text);
                         root.close();
                     }
                 }

@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 mod dispatch;
-use dispatch::{handle_dispatch, AppState};
+use dispatch::{handle_dispatch, read_dir_entries, AppState};
 
 slint::include_modules!();
 
@@ -14,6 +14,12 @@ fn main() {
     let schemas = Schemas::load_default();
 
     let app = AppWindow::new().unwrap();
+
+    // Initialise the file browser to the current working directory
+    let cwd = std::env::current_dir().unwrap_or_default();
+    app.set_file_browser_dir(SharedString::from(cwd.to_string_lossy().as_ref()));
+    let initial_entries = read_dir_entries(&cwd);
+    app.set_file_browser_entries(ModelRc::from(Rc::new(VecModel::from(initial_entries))));
 
     // Populate schema names (sorted for deterministic ordering)
     let mut schema_names: Vec<SharedString> = schemas
