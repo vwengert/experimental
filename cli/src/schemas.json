@@ -35,15 +35,18 @@
     "values": {
       "width": {
         "ty": "Float",
-        "required": false
+        "required": false,
+        "units": ["px", "em", "rem", "%"]
       },
       "height": {
         "ty": "Float",
-        "required": false
+        "required": false,
+        "units": ["px", "em", "rem", "%"]
       },
       "padding": {
         "ty": "Int",
-        "required": false
+        "required": false,
+        "units": "px"
       }
     },
     "allow_unknown_keys": true

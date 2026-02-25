@@ -1,30 +1,5 @@
 import { Button, ComboBox, ScrollView, VerticalBox, HorizontalBox, LineEdit } from "std-widgets.slint";
-
-struct KeyValuePair {
-    key: string,
-    value: string,
-}
-
-struct LineItem {
-    title: string,
-    pairs: [KeyValuePair],
-}
-
-enum ActionType {
-    add-line,
-    value-changed,
-    line-type-changed,
-    save,
-    load,
-}
-
-struct Action {
-    action-type: ActionType,
-    schema-name: string,
-    line-index: int,
-    pair-index: int,
-    new-value: string,
-}
+import { KeyValuePair, LineItem, ActionType, Action } from "structs.slint";
 
 export component AppWindow inherits Window {
     title: "Schema Elements Editor";
@@ -133,7 +108,7 @@ export component AppWindow inherits Window {
 
                             LineEdit {
                                 text: pair.value;
-                                min-width: 300px;
+                                min-width: 200px;
                                 edited(new-value) => {
                                     root.dispatch({
                                         action-type: ActionType.value-changed,
@@ -143,6 +118,25 @@ export component AppWindow inherits Window {
                                         new-value: new-value,
                                     });
                                 }
+                            }
+
+                            if pair.unit-options.length > 0: ComboBox {
+                                model: pair.unit-options;
+                                current-value: pair.unit;
+                                selected(new-unit) => {
+                                    root.dispatch({
+                                        action-type: ActionType.unit-changed,
+                                        schema-name: "",
+                                        line-index: i,
+                                        pair-index: j,
+                                        new-value: new-unit,
+                                    });
+                                }
+                            }
+
+                            if pair.unit-options.length == 0 && pair.unit != "": Text {
+                                text: pair.unit;
+                                vertical-alignment: center;
                             }
                         }
                     }
