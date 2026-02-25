@@ -1,6 +1,9 @@
+
 export struct KeyValuePair {
     key: string,
     value: string,
+    unit: string,
+    unit-options: [string],
 }
 
 export struct LineItem {
@@ -11,6 +14,7 @@ export struct LineItem {
 export enum ActionType {
     add-line,
     value-changed,
+    unit-changed,
     line-type-changed,
 }
 

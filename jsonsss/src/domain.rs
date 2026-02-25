@@ -30,11 +30,21 @@ fn is_false(value: &bool) -> bool {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum UnitSpec {
+    Fixed(String),
+    List(Vec<String>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeySpec {
     pub ty: ValueType,
 
     #[serde(default = "default_required", skip_serializing_if = "is_true")]
     pub required: bool,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub units: Option<UnitSpec>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
