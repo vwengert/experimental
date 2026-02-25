@@ -1787,6 +1787,8 @@ name = "gui"
 version = "0.1.0"
 dependencies = [
  "jsonsss",
+ "serde",
+ "serde_json",
  "slint",
  "slint-build",
 ]

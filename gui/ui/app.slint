@@ -13,53 +13,143 @@ export component AppWindow inherits Window {
     in property <[string]> list-names;
     in-out property <int> active-list-index: 0;
 
+    // File dialog state
+    private property <bool> file-dialog-is-save: true;
+    private property <string> file-dialog-path: "lists.json";
+
     callback dispatch(Action);
 
-    VerticalBox {
-        // Tab bar
-        HorizontalLayout {
-            padding: 4px;
-            spacing: 4px;
-            alignment: start;
+    // File path popup
+    file-dialog := PopupWindow {
+        x: (root.width - 320px) / 2;
+        y: (root.height - 160px) / 2;
+        width: 320px;
+        height: 160px;
+        close-policy: PopupClosePolicy.no-auto-close;
 
-            for tab-name[ti] in root.list-names: Rectangle {
-                width: 90px;
-                height: 30px;
-                background: ti == root.active-list-index ? #4a90d9 : #d0d0d0;
-                border-radius: 4px;
+        Rectangle {
+            background: #f5f5f5;
+            border-width: 1px;
+            border-color: #999999;
+            border-radius: 6px;
+
+            VerticalBox {
+                padding: 12px;
+                spacing: 8px;
 
                 Text {
-                    text: tab-name;
-                    color: ti == root.active-list-index ? #ffffff : #333333;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                    font-weight: ti == root.active-list-index ? 700 : 400;
+                    text: root.file-dialog-is-save ? "Save list to file:" : "Load list from file:";
+                    font-weight: 600;
                 }
 
-                TouchArea {
+                file-path-input := LineEdit {
+                    text: root.file-dialog-path;
+                    placeholder-text: "Enter file path…";
+                }
+
+                HorizontalBox {
+                    alignment: end;
+                    spacing: 8px;
+
+                    Button {
+                        text: "Cancel";
+                        clicked => { file-dialog.close(); }
+                    }
+
+                    Button {
+                        text: root.file-dialog-is-save ? "Save" : "Load";
+                        clicked => {
+                            root.file-dialog-path = file-path-input.text;
+                            root.dispatch({
+                                action-type: root.file-dialog-is-save
+                                    ? ActionType.save-list
+                                    : ActionType.load-list,
+                                schema-name: "",
+                                line-index: 0,
+                                pair-index: 0,
+                                new-value: file-path-input.text,
+                            });
+                            file-dialog.close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // File menu
+    MenuBar {
+        Menu {
+            title: "File";
+
+            MenuItem {
+                title: "Save";
+                activated => {
+                    root.file-dialog-is-save = true;
+                    file-dialog.show();
+                }
+            }
+
+            MenuItem {
+                title: "Load";
+                activated => {
+                    root.file-dialog-is-save = false;
+                    file-dialog.show();
+                }
+            }
+        }
+    }
+
+    VerticalBox {
+        // Tab bar wrapped in a horizontal ScrollView so it scrolls when tabs overflow
+        ScrollView {
+            height: 42px;
+            vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+
+            HorizontalLayout {
+                padding: 4px;
+                spacing: 4px;
+                alignment: start;
+
+                for tab-name[ti] in root.list-names: Rectangle {
+                    width: 90px;
+                    height: 30px;
+                    background: ti == root.active-list-index ? #4a90d9 : #d0d0d0;
+                    border-radius: 4px;
+
+                    Text {
+                        text: tab-name;
+                        color: ti == root.active-list-index ? #ffffff : #333333;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        font-weight: ti == root.active-list-index ? 700 : 400;
+                    }
+
+                    TouchArea {
+                        clicked => {
+                            root.active-list-index = ti;
+                            root.dispatch({
+                                action-type: ActionType.switch-list,
+                                schema-name: "",
+                                line-index: ti,
+                                pair-index: 0,
+                                new-value: "",
+                            });
+                        }
+                    }
+                }
+
+                Button {
+                    text: "+ Add List";
                     clicked => {
-                        root.active-list-index = ti;
                         root.dispatch({
-                            action-type: ActionType.switch-list,
+                            action-type: ActionType.add-list,
                             schema-name: "",
-                            line-index: ti,
+                            line-index: 0,
                             pair-index: 0,
                             new-value: "",
                         });
                     }
-                }
-            }
-
-            Button {
-                text: "+ Add List";
-                clicked => {
-                    root.dispatch({
-                        action-type: ActionType.add-list,
-                        schema-name: "",
-                        line-index: 0,
-                        pair-index: 0,
-                        new-value: "",
-                    });
                 }
             }
         }
