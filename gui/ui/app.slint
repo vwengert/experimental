@@ -1,4 +1,4 @@
-import { Button, ComboBox, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { Button, ComboBox, Palette, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 import { LineItem, ActionType, Action } from "structs.slint";
 import { FileDialog } from "file-dialog.slint";
 import { LineCard } from "line-card.slint";
@@ -9,7 +9,8 @@ export component AppWindow inherits Window {
     min-height: 400px;
     preferred-width: 800px;
     preferred-height: 600px;
-    preferred-color-scheme: ColorScheme.light;
+
+    init => { Palette.color-scheme = ColorScheme.light; }
 
     in property <[string]> schema-names;
     in-out property <[LineItem]> lines;
