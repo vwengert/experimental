@@ -132,3 +132,30 @@ pub fn json_value_matches_type(value: &serde_json::Value, expected: ValueType) -
         ValueType::Float => value.is_number(),
     }
 }
+
+// ── Serialisable save-file structures ─────────────────────────────────────────
+
+#[derive(Serialize, Deserialize)]
+pub struct SavedPair {
+    pub key: String,
+    pub value: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SavedLine {
+    pub title: String,
+    pub pairs: Vec<SavedPair>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SavedList {
+    pub name: String,
+    pub lines: Vec<SavedLine>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SavedData {
+    pub lists: Vec<SavedList>,
+}

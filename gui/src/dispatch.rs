@@ -1,39 +1,11 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use serde::{Deserialize, Serialize};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
-use jsonsss::domain::{KeySpec, Schemas};
+use domain::domain::{KeySpec, SavedData, SavedLine, SavedList, SavedPair, Schemas};
 
 use crate::{Action, ActionType, AppWindow, FileEntry, KeyValuePair, LineItem};
-
-// ── Serialisable save-file structures ────────────────────────────────────────
-
-#[derive(Serialize, Deserialize)]
-pub struct SavedPair {
-    pub key: String,
-    pub value: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unit: Option<String>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SavedLine {
-    pub title: String,
-    pub pairs: Vec<SavedPair>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SavedList {
-    pub name: String,
-    pub lines: Vec<SavedLine>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SavedData {
-    pub lists: Vec<SavedList>,
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 

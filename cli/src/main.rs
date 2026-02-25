@@ -1,4 +1,4 @@
-use jsonsss::domain::Schemas;
+use domain::domain::Schemas;
 
 fn main() {
     let schemas = Schemas::load_default();
