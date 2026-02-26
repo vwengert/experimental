@@ -6,16 +6,7 @@ use slint::{ModelRc, SharedString, VecModel};
 use domain::schema::{ElementSchema, KeySpec};
 
 use crate::{FileEntry, KeyData};
-use crate::dispatch::AppState;
 
-pub fn set_lines_model(state: &AppState, idx: usize) {
-    *state.active_list_idx.borrow_mut() = idx;
-    if let Some(app) = state.app_weak.upgrade() {
-        app.set_active_list_index(idx as i32);
-        let model = state.list_models.borrow()[idx].clone();
-        app.set_lines(ModelRc::from(model));
-    }
-}
 pub fn build_unit_options(
     spec: &KeySpec,
     units: &HashMap<String, Vec<String>>,

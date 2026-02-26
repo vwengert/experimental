@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 mod dispatch;
 mod util;
-use dispatch::{handle_dispatch, AppState};
+use dispatch::AppState;
 use util::read_dir_entries;
 
 slint::include_modules!();
@@ -76,7 +76,7 @@ fn main() {
 
     // Single dispatch callback that handles all actions
     app.on_dispatch(move |action| {
-        handle_dispatch(&state, action);
+        state.handle_dispatch(action);
     });
 
     app.run().unwrap();

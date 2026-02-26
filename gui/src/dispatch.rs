@@ -6,7 +6,7 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use domain::domain::{ItemData, ItemLine, ItemList, ItemSet};
 use domain::schema::{Schemas, ValueType};
 
-use crate::util::{build_key_data_for_schema, build_unit_options, read_dir_entries, set_lines_model};
+use crate::util::{build_key_data_for_schema, build_unit_options, read_dir_entries};
 use crate::{Action, ActionType, AppWindow, KeyData, LineItem};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,403 +36,420 @@ fn validate_value_str(value: &str, ty: ValueType) -> bool {
     }
 }
 
-/// Validates every key_data in every list. Updates each key_data's `is_valid` flag, sets
-/// the app focus properties to the first invalid field (switching the active list if
-/// needed), and returns `true` only when all fields are valid.
-fn validate_all_and_focus(state: &AppState) -> bool {
-    // Collect (list_idx, line_idx, key_data_idx, is_valid) results while borrowing models.
-    struct InvalidField {
-        list_idx: usize,
-        line_idx: i32,
-        key_data_idx: i32,
+// ── AppState implementation ───────────────────────────────────────────────────
+
+impl AppState {
+    /// Sets the active list index and updates the UI lines model accordingly.
+    pub fn set_lines_model(&self, idx: usize) {
+        *self.active_list_idx.borrow_mut() = idx;
+        if let Some(app) = self.app_weak.upgrade() {
+            app.set_active_list_index(idx as i32);
+            let model = self.list_models.borrow()[idx].clone();
+            app.set_lines(ModelRc::from(model));
+        }
     }
-    let mut first_invalid: Option<InvalidField> = None;
 
-    {
-        let list_models = state.list_models.borrow();
-        let all_key_data = state.all_key_data_models.borrow();
+    /// Validates every key_data in every list. Updates each key_data's `is_valid` flag, sets
+    /// the app focus properties to the first invalid field (switching the active list if
+    /// needed), and returns `true` only when all fields are valid.
+    fn validate_all_and_focus(&self) -> bool {
+        // Collect (list_idx, line_idx, key_data_idx, is_valid) results while borrowing models.
+        struct InvalidField {
+            list_idx: usize,
+            line_idx: i32,
+            key_data_idx: i32,
+        }
+        let mut first_invalid: Option<InvalidField> = None;
 
-        for list_idx in 0..list_models.len() {
-            let lines_model = &list_models[list_idx];
-            let key_data_for_list = all_key_data[list_idx].borrow();
+        {
+            let list_models = self.list_models.borrow();
+            let all_key_data = self.all_key_data_models.borrow();
 
-            for li in 0..lines_model.row_count() {
-                if let (Some(line), Some(key_data_model)) =
-                    (lines_model.row_data(li), key_data_for_list.get(li))
-                {
-                    let schema = state.schemas.schema_for(line.title.as_str());
-                    for pi in 0..key_data_model.row_count() {
-                        if let Some(mut key_data) = key_data_model.row_data(pi) {
-                            let is_valid = schema
-                                .and_then(|s| s.fields.get(key_data.key.as_str()))
-                                .map(|spec| validate_value_str(key_data.value.as_str(), spec.ty))
-                                .unwrap_or(!key_data.value.is_empty());
-                            if is_valid != key_data.is_valid {
-                                key_data.is_valid = is_valid;
-                                key_data_model.set_row_data(pi, key_data);
-                            }
-                            if !is_valid && first_invalid.is_none() {
-                                first_invalid = Some(InvalidField {
-                                    list_idx,
-                                    line_idx: li as i32,
-                                    key_data_idx: pi as i32,
-                                });
+            for list_idx in 0..list_models.len() {
+                let lines_model = &list_models[list_idx];
+                let key_data_for_list = all_key_data[list_idx].borrow();
+
+                for li in 0..lines_model.row_count() {
+                    if let (Some(line), Some(key_data_model)) =
+                        (lines_model.row_data(li), key_data_for_list.get(li))
+                    {
+                        let schema = self.schemas.schema_for(line.title.as_str());
+                        for pi in 0..key_data_model.row_count() {
+                            if let Some(mut key_data) = key_data_model.row_data(pi) {
+                                let is_valid = schema
+                                    .and_then(|s| s.fields.get(key_data.key.as_str()))
+                                    .map(|spec| {
+                                        validate_value_str(key_data.value.as_str(), spec.ty)
+                                    })
+                                    .unwrap_or(!key_data.value.is_empty());
+                                if is_valid != key_data.is_valid {
+                                    key_data.is_valid = is_valid;
+                                    key_data_model.set_row_data(pi, key_data);
+                                }
+                                if !is_valid && first_invalid.is_none() {
+                                    first_invalid = Some(InvalidField {
+                                        list_idx,
+                                        line_idx: li as i32,
+                                        key_data_idx: pi as i32,
+                                    });
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-    } // list_models and all_key_data borrows released here
+        } // list_models and all_key_data borrows released here
 
-    let all_valid = first_invalid.is_none();
+        let all_valid = first_invalid.is_none();
 
-    if let Some(app) = state.app_weak.upgrade() {
-        let (invalid_line, invalid_key_data) = match &first_invalid {
-            Some(f) => (f.line_idx, f.key_data_idx),
-            None => (-1, -1),
-        };
+        if let Some(app) = self.app_weak.upgrade() {
+            let (invalid_line, invalid_key_data) = match &first_invalid {
+                Some(f) => (f.line_idx, f.key_data_idx),
+                None => (-1, -1),
+            };
 
-        // If the first invalid field is in a different list, switch to it.
-        if let Some(f) = &first_invalid {
-            let current = *state.active_list_idx.borrow();
-            if current != f.list_idx {
-                *state.active_list_idx.borrow_mut() = f.list_idx;
-                let model = state.list_models.borrow()[f.list_idx].clone();
-                app.set_active_list_index(f.list_idx as i32);
-                app.set_lines(ModelRc::from(model));
+            // If the first invalid field is in a different list, switch to it.
+            if let Some(f) = &first_invalid {
+                let current = *self.active_list_idx.borrow();
+                if current != f.list_idx {
+                    *self.active_list_idx.borrow_mut() = f.list_idx;
+                    let model = self.list_models.borrow()[f.list_idx].clone();
+                    app.set_active_list_index(f.list_idx as i32);
+                    app.set_lines(ModelRc::from(model));
+                }
             }
+
+            app.set_first_invalid_line(invalid_line);
+            app.set_first_invalid_key_data(invalid_key_data);
+            // Incrementing the epoch triggers the `changed` handler in LineRow to focus
+            // the first invalid LineEdit.
+            app.set_validate_epoch(app.get_validate_epoch() + 1);
         }
 
-        app.set_first_invalid_line(invalid_line);
-        app.set_first_invalid_key_data(invalid_key_data);
-        // Incrementing the epoch triggers the `changed` handler in LineRow to focus
-        // the first invalid LineEdit.
-        app.set_validate_epoch(app.get_validate_epoch() + 1);
+        all_valid
     }
 
-    all_valid
-}
+    // ── Individual action handlers ────────────────────────────────────────────
 
-// ── Individual action handlers ────────────────────────────────────────────────
+    pub fn handle_add_line(&self, action: &Action) {
+        let active = *self.active_list_idx.borrow();
+        let lines_model = self.list_models.borrow()[active].clone();
+        let key_data_models = self.all_key_data_models.borrow()[active].clone();
 
-pub fn handle_add_line(state: &AppState, action: &Action) {
-    let active = *state.active_list_idx.borrow();
-    let lines_model = state.list_models.borrow()[active].clone();
-    let key_data_models = state.all_key_data_models.borrow()[active].clone();
-
-    let name = action.schema_name.as_str();
-    if name.is_empty() {
-        return;
-    }
-    if let Some(schema) = state.schemas.schema_for(name) {
-        let key_data = build_key_data_for_schema(schema, &state.schemas.units);
-
-        let key_data_vec = Rc::new(VecModel::from(key_data));
-        let key_data_model_rc = ModelRc::from(key_data_vec.clone());
-        key_data_models.borrow_mut().push(key_data_vec);
-
-        lines_model.push(LineItem { title: action.schema_name.clone(), data: key_data_model_rc });
-    }
-}
-
-pub fn handle_value_changed(state: &AppState, action: &Action) {
-    let active = *state.active_list_idx.borrow();
-    let lines_model = state.list_models.borrow()[active].clone();
-    let key_data_models = state.all_key_data_models.borrow()[active].clone();
-
-    let li = action.line_index as usize;
-    let pi = action.key_data_index as usize;
-    let borrowed = key_data_models.borrow();
-    if let Some(key_data_model) = borrowed.get(li) {
-        if let Some(mut key_data) = key_data_model.row_data(pi) {
-            let new_valid = lines_model
-                .row_data(li)
-                .and_then(|line| state.schemas.schema_for(line.title.as_str()))
-                .and_then(|schema| schema.fields.get(key_data.key.as_str()))
-                .map(|spec| validate_value_str(action.new_value.as_str(), spec.ty))
-                .unwrap_or(!action.new_value.is_empty());
-            key_data.value = action.new_value.clone();
-            // Only update the model when something actually changed to avoid unnecessary redraws
-            if new_valid != key_data.is_valid {
-                key_data.is_valid = new_valid;
-            }
-            key_data_model.set_row_data(pi, key_data);
+        let name = action.schema_name.as_str();
+        if name.is_empty() {
+            return;
         }
-    }
-}
-
-pub fn handle_unit_changed(state: &AppState, action: &Action) {
-    let active = *state.active_list_idx.borrow();
-    let key_data_models = state.all_key_data_models.borrow()[active].clone();
-
-    let li = action.line_index as usize;
-    let pi = action.key_data_index as usize;
-    let borrowed = key_data_models.borrow();
-    if let Some(key_data_model) = borrowed.get(li) {
-        if let Some(mut key_data) = key_data_model.row_data(pi) {
-            key_data.unit = action.new_value.clone();
-            key_data_model.set_row_data(pi, key_data);
-        }
-    }
-}
-
-pub fn handle_line_type_changed(state: &AppState, action: &Action) {
-    let active = *state.active_list_idx.borrow();
-    let lines_model = state.list_models.borrow()[active].clone();
-    let key_data_models = state.all_key_data_models.borrow()[active].clone();
-
-    let li = action.line_index as usize;
-    let name = action.schema_name.as_str();
-    if let Some(schema) = state.schemas.schema_for(name) {
-        let key_data = build_key_data_for_schema(schema, &state.schemas.units);
-
-        let borrowed = key_data_models.borrow();
-        if let Some(key_data_model) = borrowed.get(li) {
-            key_data_model.set_vec(key_data);
-        }
-        drop(borrowed);
-
-        if let Some(mut line) = lines_model.row_data(li) {
-            line.title = action.schema_name.clone();
-            lines_model.set_row_data(li, line);
-        }
-    }
-}
-
-pub fn handle_remove_line(state: &AppState, action: &Action) {
-    let active = *state.active_list_idx.borrow();
-    let lines_model = state.list_models.borrow()[active].clone();
-    let key_data_models = state.all_key_data_models.borrow()[active].clone();
-
-    let li = action.line_index as usize;
-    if li < lines_model.row_count() {
-        lines_model.remove(li);
-        let mut borrowed = key_data_models.borrow_mut();
-        if li < borrowed.len() {
-            borrowed.remove(li);
-        }
-    }
-}
-
-pub fn handle_switch_list(state: &AppState, action: &Action) {
-    let new_idx = action.line_index as usize;
-    let list_count = state.list_models.borrow().len();
-    if new_idx < list_count {
-        *state.active_list_idx.borrow_mut() = new_idx;
-        let new_model = state.list_models.borrow()[new_idx].clone();
-        if let Some(app) = state.app_weak.upgrade() {
-            app.set_lines(ModelRc::from(new_model));
-        }
-    }
-}
-
-pub fn handle_add_list(state: &AppState) {
-    let count = state.list_models.borrow().len();
-    state.list_models.borrow_mut().push(Rc::new(VecModel::<LineItem>::default()));
-    state.all_key_data_models.borrow_mut().push(Rc::new(RefCell::new(Vec::new())));
-    state.list_names.push(SharedString::from(format!("list {count}").as_str()));
-    let new_idx = count;
-    set_lines_model(state, new_idx);
-}
-
-pub fn handle_remove_list(state: &AppState, action: &Action) {
-    let idx = action.line_index as usize;
-    let count = state.list_models.borrow().len();
-    if idx == 0 || idx >= count {
-        return;
-    }
-    state.list_models.borrow_mut().remove(idx);
-    state.all_key_data_models.borrow_mut().remove(idx);
-    state.list_names.remove(idx);
-    let current = *state.active_list_idx.borrow();
-    let new_active = if current >= idx && current > 0 { current - 1 } else { current };
-    set_lines_model(state, new_active);
-}
-
-pub fn handle_navigate_dir(state: &AppState, action: &Action) {
-    let path_str = action.new_value.as_str();
-    if path_str.is_empty() {
-        return;
-    }
-    let canonical = match std::path::Path::new(path_str).canonicalize() {
-        Ok(p) if p.is_dir() => p,
-        _ => return,
-    };
-    let entries = read_dir_entries(&canonical);
-    if let Some(app) = state.app_weak.upgrade() {
-        app.set_file_browser_dir(SharedString::from(canonical.to_string_lossy().as_ref()));
-        app.set_file_browser_entries(ModelRc::from(Rc::new(VecModel::from(entries))));
-    }
-}
-
-pub fn handle_validate_before_save(state: &AppState) {
-    if validate_all_and_focus(state) {
-        if let Some(app) = state.app_weak.upgrade() {
-            app.set_open_save_dialog(true);
-        }
-    } else if let Some(app) = state.app_weak.upgrade() {
-        app.set_validation_error_epoch(app.get_validation_error_epoch() + 1);
-    }
-}
-
-pub fn handle_save_list(state: &AppState, action: &Action) {
-    let path = action.new_value.as_str();
-    if path.is_empty() {
-        return;
-    }
-    let list_models_ref = state.list_models.borrow();
-    let all_key_data_ref = state.all_key_data_models.borrow();
-    let mut item_lists: Vec<ItemList> = Vec::new();
-    for li in 0..list_models_ref.len() {
-        let name = state
-            .list_names
-            .row_data(li)
-            .map(|s| s.to_string())
-            .unwrap_or_default();
-        let line_model = &list_models_ref[li];
-        let key_data_for_list = all_key_data_ref[li].borrow();
-        let mut item_lines: Vec<ItemLine> = Vec::new();
-        for (line_idx, key_data_model) in key_data_for_list.iter().enumerate() {
-            let title = line_model
-                .row_data(line_idx)
-                .map(|l| l.title.to_string())
-                .unwrap_or_default();
-            let item_sets: Vec<ItemSet> = (0..key_data_model.row_count())
-                .filter_map(|pi| key_data_model.row_data(pi))
-                .map(|p| ItemSet {
-                    key: p.key.to_string(),
-                    value: p.value.to_string(),
-                    unit: if p.unit.is_empty() { None } else { Some(p.unit.to_string()) },
-                })
-                .collect();
-            item_lines.push(ItemLine { title, sets: item_sets });
-        }
-        item_lists.push(ItemList { name, lines: item_lines });
-    }
-    let data = ItemData { lists: item_lists };
-    let _ = domain::io::save(path, &data);
-
-    if let Some(app) = state.app_weak.upgrade() {
-        app.set_is_dirty(false);
-    }
-}
-
-pub fn handle_load_list(state: &AppState, action: &Action) {
-    let path = action.new_value.as_str();
-    if path.is_empty() {
-        return;
-    }
-    let item_data: ItemData = match domain::io::load(path) {
-        Ok(d) => d,
-        Err(_) => return,
-    };
-    if item_data.lists.is_empty() {
-        return;
-    }
-
-    let mut new_list_models: Vec<Rc<VecModel<LineItem>>> = Vec::new();
-    let mut new_key_data_models: Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>> = Vec::new();
-
-    for item_list in &item_data.lists {
-        let line_model: Rc<VecModel<LineItem>> = Rc::new(VecModel::<LineItem>::default());
-        let key_data_for_list: Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>> =
-            Rc::new(RefCell::new(Vec::new()));
-
-        for item_line in &item_list.lines {
-            let key_data: Vec<KeyData> = item_line
-                .sets
-                .iter()
-                .map(|p| {
-                    let unit_options = state
-                        .schemas
-                        .schema_for(&item_line.title)
-                        .and_then(|schema| schema.fields.get(&p.key))
-                        .map(|key_spec| build_unit_options(key_spec, &state.schemas.units))
-                        .unwrap_or_else(|| {
-                            ModelRc::from(Rc::new(VecModel::<SharedString>::default()))
-                        });
-                    KeyData {
-                        key: SharedString::from(p.key.as_str()),
-                        value: SharedString::from(p.value.as_str()),
-                        unit: SharedString::from(p.unit.as_deref().unwrap_or("")),
-                        unit_options,
-                        is_valid: true,
-                    }
-                })
-                .collect();
+        if let Some(schema) = self.schemas.schema_for(name) {
+            let key_data = build_key_data_for_schema(schema, &self.schemas.units);
 
             let key_data_vec = Rc::new(VecModel::from(key_data));
-            key_data_for_list.borrow_mut().push(key_data_vec.clone());
-            line_model.push(LineItem {
-                title: SharedString::from(item_line.title.as_str()),
-                data: ModelRc::from(key_data_vec),
-            });
+            let key_data_model_rc = ModelRc::from(key_data_vec.clone());
+            key_data_models.borrow_mut().push(key_data_vec);
+
+            lines_model
+                .push(LineItem { title: action.schema_name.clone(), data: key_data_model_rc });
+        }
+    }
+
+    pub fn handle_value_changed(&self, action: &Action) {
+        let active = *self.active_list_idx.borrow();
+        let lines_model = self.list_models.borrow()[active].clone();
+        let key_data_models = self.all_key_data_models.borrow()[active].clone();
+
+        let li = action.line_index as usize;
+        let pi = action.key_data_index as usize;
+        let borrowed = key_data_models.borrow();
+        if let Some(key_data_model) = borrowed.get(li) {
+            if let Some(mut key_data) = key_data_model.row_data(pi) {
+                let new_valid = lines_model
+                    .row_data(li)
+                    .and_then(|line| self.schemas.schema_for(line.title.as_str()))
+                    .and_then(|schema| schema.fields.get(key_data.key.as_str()))
+                    .map(|spec| validate_value_str(action.new_value.as_str(), spec.ty))
+                    .unwrap_or(!action.new_value.is_empty());
+                key_data.value = action.new_value.clone();
+                // Only update the model when something actually changed to avoid unnecessary redraws
+                if new_valid != key_data.is_valid {
+                    key_data.is_valid = new_valid;
+                }
+                key_data_model.set_row_data(pi, key_data);
+            }
+        }
+    }
+
+    pub fn handle_unit_changed(&self, action: &Action) {
+        let active = *self.active_list_idx.borrow();
+        let key_data_models = self.all_key_data_models.borrow()[active].clone();
+
+        let li = action.line_index as usize;
+        let pi = action.key_data_index as usize;
+        let borrowed = key_data_models.borrow();
+        if let Some(key_data_model) = borrowed.get(li) {
+            if let Some(mut key_data) = key_data_model.row_data(pi) {
+                key_data.unit = action.new_value.clone();
+                key_data_model.set_row_data(pi, key_data);
+            }
+        }
+    }
+
+    pub fn handle_line_type_changed(&self, action: &Action) {
+        let active = *self.active_list_idx.borrow();
+        let lines_model = self.list_models.borrow()[active].clone();
+        let key_data_models = self.all_key_data_models.borrow()[active].clone();
+
+        let li = action.line_index as usize;
+        let name = action.schema_name.as_str();
+        if let Some(schema) = self.schemas.schema_for(name) {
+            let key_data = build_key_data_for_schema(schema, &self.schemas.units);
+
+            let borrowed = key_data_models.borrow();
+            if let Some(key_data_model) = borrowed.get(li) {
+                key_data_model.set_vec(key_data);
+            }
+            drop(borrowed);
+
+            if let Some(mut line) = lines_model.row_data(li) {
+                line.title = action.schema_name.clone();
+                lines_model.set_row_data(li, line);
+            }
+        }
+    }
+
+    pub fn handle_remove_line(&self, action: &Action) {
+        let active = *self.active_list_idx.borrow();
+        let lines_model = self.list_models.borrow()[active].clone();
+        let key_data_models = self.all_key_data_models.borrow()[active].clone();
+
+        let li = action.line_index as usize;
+        if li < lines_model.row_count() {
+            lines_model.remove(li);
+            let mut borrowed = key_data_models.borrow_mut();
+            if li < borrowed.len() {
+                borrowed.remove(li);
+            }
+        }
+    }
+
+    pub fn handle_switch_list(&self, action: &Action) {
+        let new_idx = action.line_index as usize;
+        let list_count = self.list_models.borrow().len();
+        if new_idx < list_count {
+            *self.active_list_idx.borrow_mut() = new_idx;
+            let new_model = self.list_models.borrow()[new_idx].clone();
+            if let Some(app) = self.app_weak.upgrade() {
+                app.set_lines(ModelRc::from(new_model));
+            }
+        }
+    }
+
+    pub fn handle_add_list(&self) {
+        let count = self.list_models.borrow().len();
+        self.list_models.borrow_mut().push(Rc::new(VecModel::<LineItem>::default()));
+        self.all_key_data_models.borrow_mut().push(Rc::new(RefCell::new(Vec::new())));
+        self.list_names.push(SharedString::from(format!("list {count}").as_str()));
+        let new_idx = count;
+        self.set_lines_model(new_idx);
+    }
+
+    pub fn handle_remove_list(&self, action: &Action) {
+        let idx = action.line_index as usize;
+        let count = self.list_models.borrow().len();
+        if idx == 0 || idx >= count {
+            return;
+        }
+        self.list_models.borrow_mut().remove(idx);
+        self.all_key_data_models.borrow_mut().remove(idx);
+        self.list_names.remove(idx);
+        let current = *self.active_list_idx.borrow();
+        let new_active = if current >= idx && current > 0 { current - 1 } else { current };
+        self.set_lines_model(new_active);
+    }
+
+    pub fn handle_navigate_dir(&self, action: &Action) {
+        let path_str = action.new_value.as_str();
+        if path_str.is_empty() {
+            return;
+        }
+        let canonical = match std::path::Path::new(path_str).canonicalize() {
+            Ok(p) if p.is_dir() => p,
+            _ => return,
+        };
+        let entries = read_dir_entries(&canonical);
+        if let Some(app) = self.app_weak.upgrade() {
+            app.set_file_browser_dir(SharedString::from(canonical.to_string_lossy().as_ref()));
+            app.set_file_browser_entries(ModelRc::from(Rc::new(VecModel::from(entries))));
+        }
+    }
+
+    pub fn handle_validate_before_save(&self) {
+        if self.validate_all_and_focus() {
+            if let Some(app) = self.app_weak.upgrade() {
+                app.set_open_save_dialog(true);
+            }
+        } else if let Some(app) = self.app_weak.upgrade() {
+            app.set_validation_error_epoch(app.get_validation_error_epoch() + 1);
+        }
+    }
+
+    pub fn handle_save_list(&self, action: &Action) {
+        let path = action.new_value.as_str();
+        if path.is_empty() {
+            return;
+        }
+        let list_models_ref = self.list_models.borrow();
+        let all_key_data_ref = self.all_key_data_models.borrow();
+        let mut item_lists: Vec<ItemList> = Vec::new();
+        for li in 0..list_models_ref.len() {
+            let name = self
+                .list_names
+                .row_data(li)
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            let line_model = &list_models_ref[li];
+            let key_data_for_list = all_key_data_ref[li].borrow();
+            let mut item_lines: Vec<ItemLine> = Vec::new();
+            for (line_idx, key_data_model) in key_data_for_list.iter().enumerate() {
+                let title = line_model
+                    .row_data(line_idx)
+                    .map(|l| l.title.to_string())
+                    .unwrap_or_default();
+                let item_sets: Vec<ItemSet> = (0..key_data_model.row_count())
+                    .filter_map(|pi| key_data_model.row_data(pi))
+                    .map(|p| ItemSet {
+                        key: p.key.to_string(),
+                        value: p.value.to_string(),
+                        unit: if p.unit.is_empty() { None } else { Some(p.unit.to_string()) },
+                    })
+                    .collect();
+                item_lines.push(ItemLine { title, sets: item_sets });
+            }
+            item_lists.push(ItemList { name, lines: item_lines });
+        }
+        let data = ItemData { lists: item_lists };
+        let _ = domain::io::save(path, &data);
+
+        if let Some(app) = self.app_weak.upgrade() {
+            app.set_is_dirty(false);
+        }
+    }
+
+    pub fn handle_load_list(&self, action: &Action) {
+        let path = action.new_value.as_str();
+        if path.is_empty() {
+            return;
+        }
+        let item_data: ItemData = match domain::io::load(path) {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        if item_data.lists.is_empty() {
+            return;
         }
 
-        new_list_models.push(line_model);
-        new_key_data_models.push(key_data_for_list);
+        let mut new_list_models: Vec<Rc<VecModel<LineItem>>> = Vec::new();
+        let mut new_key_data_models: Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>> = Vec::new();
+
+        for item_list in &item_data.lists {
+            let line_model: Rc<VecModel<LineItem>> = Rc::new(VecModel::<LineItem>::default());
+            let key_data_for_list: Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>> =
+                Rc::new(RefCell::new(Vec::new()));
+
+            for item_line in &item_list.lines {
+                let key_data: Vec<KeyData> = item_line
+                    .sets
+                    .iter()
+                    .map(|p| {
+                        let unit_options = self
+                            .schemas
+                            .schema_for(&item_line.title)
+                            .and_then(|schema| schema.fields.get(&p.key))
+                            .map(|key_spec| build_unit_options(key_spec, &self.schemas.units))
+                            .unwrap_or_else(|| {
+                                ModelRc::from(Rc::new(VecModel::<SharedString>::default()))
+                            });
+                        KeyData {
+                            key: SharedString::from(p.key.as_str()),
+                            value: SharedString::from(p.value.as_str()),
+                            unit: SharedString::from(p.unit.as_deref().unwrap_or("")),
+                            unit_options,
+                            is_valid: true,
+                        }
+                    })
+                    .collect();
+
+                let key_data_vec = Rc::new(VecModel::from(key_data));
+                key_data_for_list.borrow_mut().push(key_data_vec.clone());
+                line_model.push(LineItem {
+                    title: SharedString::from(item_line.title.as_str()),
+                    data: ModelRc::from(key_data_vec),
+                });
+            }
+
+            new_list_models.push(line_model);
+            new_key_data_models.push(key_data_for_list);
+        }
+
+        *self.list_models.borrow_mut() = new_list_models;
+        *self.all_key_data_models.borrow_mut() = new_key_data_models;
+
+        while self.list_names.row_count() > 0 {
+            self.list_names.remove(0);
+        }
+        for item_list in &item_data.lists {
+            self.list_names.push(SharedString::from(item_list.name.as_str()));
+        }
+
+        *self.active_list_idx.borrow_mut() = 0;
+        if let Some(app) = self.app_weak.upgrade() {
+            app.set_active_list_index(0);
+            let first_model = self.list_models.borrow()[0].clone();
+            app.set_lines(ModelRc::from(first_model));
+            app.set_is_dirty(false);
+        }
     }
 
-    *state.list_models.borrow_mut() = new_list_models;
-    *state.all_key_data_models.borrow_mut() = new_key_data_models;
-
-    while state.list_names.row_count() > 0 {
-        state.list_names.remove(0);
-    }
-    for item_list in &item_data.lists {
-        state.list_names.push(SharedString::from(item_list.name.as_str()));
+    pub fn handle_exit(&self) {
+        if let Some(app) = self.app_weak.upgrade() {
+            let _ = app.hide();
+        }
     }
 
-    *state.active_list_idx.borrow_mut() = 0;
-    if let Some(app) = state.app_weak.upgrade() {
-        app.set_active_list_index(0);
-        let first_model = state.list_models.borrow()[0].clone();
-        app.set_lines(ModelRc::from(first_model));
-        app.set_is_dirty(false);
-    }
-}
+    // ── Main dispatch entry point ─────────────────────────────────────────────
 
-pub fn handle_exit(state: &AppState) {
-    if let Some(app) = state.app_weak.upgrade() {
-        let _ = app.hide();
-    }
-}
+    pub fn handle_dispatch(&self, action: Action) {
+        // Determine dirty-flag impact before consuming action fields
+        let marks_dirty = !matches!(
+            action.action_type,
+            ActionType::SwitchList
+                | ActionType::SaveList
+                | ActionType::LoadList
+                | ActionType::NavigateDir
+                | ActionType::ValidateBeforeSave
+                | ActionType::Exit
+        );
 
-// ── Main dispatch entry point ─────────────────────────────────────────────────
+        match action.action_type {
+            ActionType::AddLine => self.handle_add_line(&action),
+            ActionType::ValueChanged => self.handle_value_changed(&action),
+            ActionType::UnitChanged => self.handle_unit_changed(&action),
+            ActionType::LineTypeChanged => self.handle_line_type_changed(&action),
+            ActionType::RemoveLine => self.handle_remove_line(&action),
+            ActionType::SwitchList => self.handle_switch_list(&action),
+            ActionType::AddList => self.handle_add_list(),
+            ActionType::RemoveList => self.handle_remove_list(&action),
+            ActionType::SaveList => self.handle_save_list(&action),
+            ActionType::LoadList => self.handle_load_list(&action),
+            ActionType::NavigateDir => self.handle_navigate_dir(&action),
+            ActionType::Exit => self.handle_exit(),
+            ActionType::ValidateBeforeSave => self.handle_validate_before_save(),
+        }
 
-pub fn handle_dispatch(state: &AppState, action: Action) {
-    // Determine dirty-flag impact before consuming action fields
-    let marks_dirty = !matches!(
-        action.action_type,
-        ActionType::SwitchList
-            | ActionType::SaveList
-            | ActionType::LoadList
-            | ActionType::NavigateDir
-            | ActionType::ValidateBeforeSave
-            | ActionType::Exit
-    );
-
-    match action.action_type {
-        ActionType::AddLine => handle_add_line(state, &action),
-        ActionType::ValueChanged => handle_value_changed(state, &action),
-        ActionType::UnitChanged => handle_unit_changed(state, &action),
-        ActionType::LineTypeChanged => handle_line_type_changed(state, &action),
-        ActionType::RemoveLine => handle_remove_line(state, &action),
-        ActionType::SwitchList => handle_switch_list(state, &action),
-        ActionType::AddList => handle_add_list(state),
-        ActionType::RemoveList => handle_remove_list(state, &action),
-        ActionType::SaveList => handle_save_list(state, &action),
-        ActionType::LoadList => handle_load_list(state, &action),
-        ActionType::NavigateDir => handle_navigate_dir(state, &action),
-        ActionType::Exit => handle_exit(state),
-        ActionType::ValidateBeforeSave => handle_validate_before_save(state),
-    }
-
-    // Update the is-dirty property on the UI
-    if marks_dirty {
-        if let Some(app) = state.app_weak.upgrade() {
-            app.set_is_dirty(true);
+        // Update the is-dirty property on the UI
+        if marks_dirty {
+            if let Some(app) = self.app_weak.upgrade() {
+                app.set_is_dirty(true);
+            }
         }
     }
 }
