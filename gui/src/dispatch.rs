@@ -367,9 +367,7 @@ pub fn handle_save_list(state: &AppState, action: &Action) {
         item_lists.push(ItemList { name, lines: item_lines });
     }
     let data = ItemData { lists: item_lists };
-    if let Ok(json) = serde_json::to_string_pretty(&data) {
-        let _ = std::fs::write(path, json);
-    }
+    let _ = domain::io::save(path, &data);
 
     if let Some(app) = state.app_weak.upgrade() {
         app.set_is_dirty(false);
@@ -381,11 +379,7 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
     if path.is_empty() {
         return;
     }
-    let json = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(_) => return,
-    };
-    let item_data: ItemData = match serde_json::from_str(&json) {
+    let item_data: ItemData = match domain::io::load(path) {
         Ok(d) => d,
         Err(_) => return,
     };
