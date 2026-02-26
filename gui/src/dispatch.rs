@@ -6,7 +6,7 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use domain::domain::{ItemData, ItemLine, ItemList, ItemSet};
 use domain::schema::{Schemas, ValueType};
 
-use crate::util::{build_pairs_for_schema, build_unit_options, read_dir_entries, set_lines_model};
+use crate::util::{build_key_data_for_schema, build_unit_options, read_dir_entries, set_lines_model};
 use crate::{Action, ActionType, AppWindow, KeyData, LineItem};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -15,7 +15,7 @@ use crate::{Action, ActionType, AppWindow, KeyData, LineItem};
 pub struct AppState {
     pub schemas: Schemas,
     pub list_models: Rc<RefCell<Vec<Rc<VecModel<LineItem>>>>>,
-    pub all_pairs_models: Rc<RefCell<Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>>>>,
+    pub all_key_data_models: Rc<RefCell<Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>>>>,
     pub active_list_idx: Rc<RefCell<usize>>,
     pub list_names: Rc<VecModel<SharedString>>,
     pub app_weak: slint::Weak<AppWindow>,
@@ -36,46 +36,46 @@ fn validate_value_str(value: &str, ty: ValueType) -> bool {
     }
 }
 
-/// Validates every pair in every list. Updates each pair's `is_valid` flag, sets
+/// Validates every key_data in every list. Updates each key_data's `is_valid` flag, sets
 /// the app focus properties to the first invalid field (switching the active list if
 /// needed), and returns `true` only when all fields are valid.
 fn validate_all_and_focus(state: &AppState) -> bool {
-    // Collect (list_idx, line_idx, pair_idx, is_valid) results while borrowing models.
+    // Collect (list_idx, line_idx, key_data_idx, is_valid) results while borrowing models.
     struct InvalidField {
         list_idx: usize,
         line_idx: i32,
-        pair_idx: i32,
+        key_data_idx: i32,
     }
     let mut first_invalid: Option<InvalidField> = None;
 
     {
         let list_models = state.list_models.borrow();
-        let all_pairs = state.all_pairs_models.borrow();
+        let all_key_data = state.all_key_data_models.borrow();
 
         for list_idx in 0..list_models.len() {
             let lines_model = &list_models[list_idx];
-            let pairs_for_list = all_pairs[list_idx].borrow();
+            let key_data_for_list = all_key_data[list_idx].borrow();
 
             for li in 0..lines_model.row_count() {
-                if let (Some(line), Some(pairs_model)) =
-                    (lines_model.row_data(li), pairs_for_list.get(li))
+                if let (Some(line), Some(key_data_model)) =
+                    (lines_model.row_data(li), key_data_for_list.get(li))
                 {
                     let schema = state.schemas.schema_for(line.title.as_str());
-                    for pi in 0..pairs_model.row_count() {
-                        if let Some(mut pair) = pairs_model.row_data(pi) {
+                    for pi in 0..key_data_model.row_count() {
+                        if let Some(mut key_data) = key_data_model.row_data(pi) {
                             let is_valid = schema
-                                .and_then(|s| s.fields.get(pair.key.as_str()))
-                                .map(|spec| validate_value_str(pair.value.as_str(), spec.ty))
-                                .unwrap_or(!pair.value.is_empty());
-                            if is_valid != pair.is_valid {
-                                pair.is_valid = is_valid;
-                                pairs_model.set_row_data(pi, pair);
+                                .and_then(|s| s.fields.get(key_data.key.as_str()))
+                                .map(|spec| validate_value_str(key_data.value.as_str(), spec.ty))
+                                .unwrap_or(!key_data.value.is_empty());
+                            if is_valid != key_data.is_valid {
+                                key_data.is_valid = is_valid;
+                                key_data_model.set_row_data(pi, key_data);
                             }
                             if !is_valid && first_invalid.is_none() {
                                 first_invalid = Some(InvalidField {
                                     list_idx,
                                     line_idx: li as i32,
-                                    pair_idx: pi as i32,
+                                    key_data_idx: pi as i32,
                                 });
                             }
                         }
@@ -83,13 +83,13 @@ fn validate_all_and_focus(state: &AppState) -> bool {
                 }
             }
         }
-    } // list_models and all_pairs borrows released here
+    } // list_models and all_key_data borrows released here
 
     let all_valid = first_invalid.is_none();
 
     if let Some(app) = state.app_weak.upgrade() {
-        let (invalid_line, invalid_pair) = match &first_invalid {
-            Some(f) => (f.line_idx, f.pair_idx),
+        let (invalid_line, invalid_key_data) = match &first_invalid {
+            Some(f) => (f.line_idx, f.key_data_idx),
             None => (-1, -1),
         };
 
@@ -105,7 +105,7 @@ fn validate_all_and_focus(state: &AppState) -> bool {
         }
 
         app.set_first_invalid_line(invalid_line);
-        app.set_first_invalid_pair(invalid_pair);
+        app.set_first_invalid_key_data(invalid_key_data);
         // Incrementing the epoch triggers the `changed` handler in LineRow to focus
         // the first invalid LineEdit.
         app.set_validate_epoch(app.get_validate_epoch() + 1);
@@ -119,60 +119,60 @@ fn validate_all_and_focus(state: &AppState) -> bool {
 pub fn handle_add_line(state: &AppState, action: &Action) {
     let active = *state.active_list_idx.borrow();
     let lines_model = state.list_models.borrow()[active].clone();
-    let pairs_models = state.all_pairs_models.borrow()[active].clone();
+    let key_data_models = state.all_key_data_models.borrow()[active].clone();
 
     let name = action.schema_name.as_str();
     if name.is_empty() {
         return;
     }
     if let Some(schema) = state.schemas.schema_for(name) {
-        let pairs = build_pairs_for_schema(schema, &state.schemas.units);
+        let key_data = build_key_data_for_schema(schema, &state.schemas.units);
 
-        let pairs_vec = Rc::new(VecModel::from(pairs));
-        let pairs_model_rc = ModelRc::from(pairs_vec.clone());
-        pairs_models.borrow_mut().push(pairs_vec);
+        let key_data_vec = Rc::new(VecModel::from(key_data));
+        let key_data_model_rc = ModelRc::from(key_data_vec.clone());
+        key_data_models.borrow_mut().push(key_data_vec);
 
-        lines_model.push(LineItem { title: action.schema_name.clone(), data: pairs_model_rc });
+        lines_model.push(LineItem { title: action.schema_name.clone(), data: key_data_model_rc });
     }
 }
 
 pub fn handle_value_changed(state: &AppState, action: &Action) {
     let active = *state.active_list_idx.borrow();
     let lines_model = state.list_models.borrow()[active].clone();
-    let pairs_models = state.all_pairs_models.borrow()[active].clone();
+    let key_data_models = state.all_key_data_models.borrow()[active].clone();
 
     let li = action.line_index as usize;
-    let pi = action.pair_index as usize;
-    let borrowed = pairs_models.borrow();
-    if let Some(pairs_model) = borrowed.get(li) {
-        if let Some(mut pair) = pairs_model.row_data(pi) {
+    let pi = action.key_data_index as usize;
+    let borrowed = key_data_models.borrow();
+    if let Some(key_data_model) = borrowed.get(li) {
+        if let Some(mut key_data) = key_data_model.row_data(pi) {
             let new_valid = lines_model
                 .row_data(li)
                 .and_then(|line| state.schemas.schema_for(line.title.as_str()))
-                .and_then(|schema| schema.fields.get(pair.key.as_str()))
+                .and_then(|schema| schema.fields.get(key_data.key.as_str()))
                 .map(|spec| validate_value_str(action.new_value.as_str(), spec.ty))
                 .unwrap_or(!action.new_value.is_empty());
-            pair.value = action.new_value.clone();
+            key_data.value = action.new_value.clone();
             // Only update the model when something actually changed to avoid unnecessary redraws
-            if new_valid != pair.is_valid {
-                pair.is_valid = new_valid;
+            if new_valid != key_data.is_valid {
+                key_data.is_valid = new_valid;
             }
-            pairs_model.set_row_data(pi, pair);
+            key_data_model.set_row_data(pi, key_data);
         }
     }
 }
 
 pub fn handle_unit_changed(state: &AppState, action: &Action) {
     let active = *state.active_list_idx.borrow();
-    let pairs_models = state.all_pairs_models.borrow()[active].clone();
+    let key_data_models = state.all_key_data_models.borrow()[active].clone();
 
     let li = action.line_index as usize;
-    let pi = action.pair_index as usize;
-    let borrowed = pairs_models.borrow();
-    if let Some(pairs_model) = borrowed.get(li) {
-        if let Some(mut pair) = pairs_model.row_data(pi) {
-            pair.unit = action.new_value.clone();
-            pairs_model.set_row_data(pi, pair);
+    let pi = action.key_data_index as usize;
+    let borrowed = key_data_models.borrow();
+    if let Some(key_data_model) = borrowed.get(li) {
+        if let Some(mut key_data) = key_data_model.row_data(pi) {
+            key_data.unit = action.new_value.clone();
+            key_data_model.set_row_data(pi, key_data);
         }
     }
 }
@@ -180,16 +180,16 @@ pub fn handle_unit_changed(state: &AppState, action: &Action) {
 pub fn handle_line_type_changed(state: &AppState, action: &Action) {
     let active = *state.active_list_idx.borrow();
     let lines_model = state.list_models.borrow()[active].clone();
-    let pairs_models = state.all_pairs_models.borrow()[active].clone();
+    let key_data_models = state.all_key_data_models.borrow()[active].clone();
 
     let li = action.line_index as usize;
     let name = action.schema_name.as_str();
     if let Some(schema) = state.schemas.schema_for(name) {
-        let pairs = build_pairs_for_schema(schema, &state.schemas.units);
+        let key_data = build_key_data_for_schema(schema, &state.schemas.units);
 
-        let borrowed = pairs_models.borrow();
-        if let Some(pairs_model) = borrowed.get(li) {
-            pairs_model.set_vec(pairs);
+        let borrowed = key_data_models.borrow();
+        if let Some(key_data_model) = borrowed.get(li) {
+            key_data_model.set_vec(key_data);
         }
         drop(borrowed);
 
@@ -203,12 +203,12 @@ pub fn handle_line_type_changed(state: &AppState, action: &Action) {
 pub fn handle_remove_line(state: &AppState, action: &Action) {
     let active = *state.active_list_idx.borrow();
     let lines_model = state.list_models.borrow()[active].clone();
-    let pairs_models = state.all_pairs_models.borrow()[active].clone();
+    let key_data_models = state.all_key_data_models.borrow()[active].clone();
 
     let li = action.line_index as usize;
     if li < lines_model.row_count() {
         lines_model.remove(li);
-        let mut borrowed = pairs_models.borrow_mut();
+        let mut borrowed = key_data_models.borrow_mut();
         if li < borrowed.len() {
             borrowed.remove(li);
         }
@@ -230,7 +230,7 @@ pub fn handle_switch_list(state: &AppState, action: &Action) {
 pub fn handle_add_list(state: &AppState) {
     let count = state.list_models.borrow().len();
     state.list_models.borrow_mut().push(Rc::new(VecModel::<LineItem>::default()));
-    state.all_pairs_models.borrow_mut().push(Rc::new(RefCell::new(Vec::new())));
+    state.all_key_data_models.borrow_mut().push(Rc::new(RefCell::new(Vec::new())));
     state.list_names.push(SharedString::from(format!("list {count}").as_str()));
     let new_idx = count;
     set_lines_model(state, new_idx);
@@ -243,7 +243,7 @@ pub fn handle_remove_list(state: &AppState, action: &Action) {
         return;
     }
     state.list_models.borrow_mut().remove(idx);
-    state.all_pairs_models.borrow_mut().remove(idx);
+    state.all_key_data_models.borrow_mut().remove(idx);
     state.list_names.remove(idx);
     let current = *state.active_list_idx.borrow();
     let new_active = if current >= idx && current > 0 { current - 1 } else { current };
@@ -282,7 +282,7 @@ pub fn handle_save_list(state: &AppState, action: &Action) {
         return;
     }
     let list_models_ref = state.list_models.borrow();
-    let all_pairs_ref = state.all_pairs_models.borrow();
+    let all_key_data_ref = state.all_key_data_models.borrow();
     let mut item_lists: Vec<ItemList> = Vec::new();
     for li in 0..list_models_ref.len() {
         let name = state
@@ -291,15 +291,15 @@ pub fn handle_save_list(state: &AppState, action: &Action) {
             .map(|s| s.to_string())
             .unwrap_or_default();
         let line_model = &list_models_ref[li];
-        let pairs_for_list = all_pairs_ref[li].borrow();
+        let key_data_for_list = all_key_data_ref[li].borrow();
         let mut item_lines: Vec<ItemLine> = Vec::new();
-        for (line_idx, pairs_model) in pairs_for_list.iter().enumerate() {
+        for (line_idx, key_data_model) in key_data_for_list.iter().enumerate() {
             let title = line_model
                 .row_data(line_idx)
                 .map(|l| l.title.to_string())
                 .unwrap_or_default();
-            let item_sets: Vec<ItemSet> = (0..pairs_model.row_count())
-                .filter_map(|pi| pairs_model.row_data(pi))
+            let item_sets: Vec<ItemSet> = (0..key_data_model.row_count())
+                .filter_map(|pi| key_data_model.row_data(pi))
                 .map(|p| ItemSet {
                     key: p.key.to_string(),
                     value: p.value.to_string(),
@@ -332,15 +332,15 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
     }
 
     let mut new_list_models: Vec<Rc<VecModel<LineItem>>> = Vec::new();
-    let mut new_pairs_models: Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>> = Vec::new();
+    let mut new_key_data_models: Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>> = Vec::new();
 
     for item_list in &item_data.lists {
         let line_model: Rc<VecModel<LineItem>> = Rc::new(VecModel::<LineItem>::default());
-        let pairs_for_list: Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>> =
+        let key_data_for_list: Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>> =
             Rc::new(RefCell::new(Vec::new()));
 
         for item_line in &item_list.lines {
-            let pairs: Vec<KeyData> = item_line
+            let key_data: Vec<KeyData> = item_line
                 .sets
                 .iter()
                 .map(|p| {
@@ -362,20 +362,20 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
                 })
                 .collect();
 
-            let pairs_vec = Rc::new(VecModel::from(pairs));
-            pairs_for_list.borrow_mut().push(pairs_vec.clone());
+            let key_data_vec = Rc::new(VecModel::from(key_data));
+            key_data_for_list.borrow_mut().push(key_data_vec.clone());
             line_model.push(LineItem {
                 title: SharedString::from(item_line.title.as_str()),
-                data: ModelRc::from(pairs_vec),
+                data: ModelRc::from(key_data_vec),
             });
         }
 
         new_list_models.push(line_model);
-        new_pairs_models.push(pairs_for_list);
+        new_key_data_models.push(key_data_for_list);
     }
 
     *state.list_models.borrow_mut() = new_list_models;
-    *state.all_pairs_models.borrow_mut() = new_pairs_models;
+    *state.all_key_data_models.borrow_mut() = new_key_data_models;
 
     while state.list_names.row_count() > 0 {
         state.list_names.remove(0);

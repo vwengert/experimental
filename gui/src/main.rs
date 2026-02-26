@@ -51,8 +51,8 @@ fn main() {
         (0..LIST_COUNT).map(|_| Rc::new(VecModel::<LineItem>::default())).collect(),
     ));
 
-    // Create one pairs-models Vec per list
-    let all_pairs_models: Rc<RefCell<Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>>>> =
+    // Create one KeyData-models Vec per list
+    let all_key_data_models: Rc<RefCell<Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>>>> =
         Rc::new(RefCell::new(
             (0..LIST_COUNT)
                 .map(|_| Rc::new(RefCell::new(Vec::<Rc<VecModel<KeyData>>>::new())))
@@ -68,7 +68,7 @@ fn main() {
     let state = Rc::new(AppState {
         schemas,
         list_models,
-        all_pairs_models,
+        all_key_data_models,
         active_list_idx,
         list_names: list_names_model,
         app_weak: app.as_weak(),

@@ -21,10 +21,10 @@ export component AppWindow inherits Window {
     in-out property <string> file-browser-dir;
     in-out property <[FileEntry]> file-browser-entries;
     in-out property <string> file-browser-file-name;
-    // Focus-first-invalid support: epoch increments each validate, line/pair hold the target
+    // Focus-first-invalid support: epoch increments each validate, line/key-data hold the target
     in-out property <int> validate-epoch: 0;
     in-out property <int> first-invalid-line: -1;
-    in-out property <int> first-invalid-pair: -1;
+    in-out property <int> first-invalid-key-data: -1;
     // Incremented by Rust to trigger the validation-error popup
     in-out property <int> validation-error-epoch: 0;
     // Set by Rust to true when pre-save validation passes, triggering the file dialog
@@ -48,7 +48,7 @@ export component AppWindow inherits Window {
                 action-type: ActionType.navigate-dir,
                 schema-name: "",
                 line-index: 0,
-                pair-index: 0,
+                key-data-index: 0,
                 new-value: path,
             });
         }
@@ -59,7 +59,7 @@ export component AppWindow inherits Window {
                     : ActionType.load-list,
                 schema-name: "",
                 line-index: 0,
-                pair-index: 0,
+                key-data-index: 0,
                 new-value: path,
             });
         }
@@ -106,7 +106,7 @@ export component AppWindow inherits Window {
                                 action-type: ActionType.exit,
                                 schema-name: "",
                                 line-index: 0,
-                                pair-index: 0,
+                                key-data-index: 0,
                                 new-value: "",
                             });
                         }
@@ -165,7 +165,7 @@ export component AppWindow inherits Window {
                 action-type: ActionType.navigate-dir,
                 schema-name: "",
                 line-index: 0,
-                pair-index: 0,
+                key-data-index: 0,
                 new-value: root.file-browser-dir,
             });
             file-dialog.show();
@@ -185,7 +185,7 @@ export component AppWindow inherits Window {
                         action-type: ActionType.validate-before-save,
                         schema-name: "",
                         line-index: 0,
-                        pair-index: 0,
+                        key-data-index: 0,
                         new-value: "",
                     });
                 }
@@ -199,7 +199,7 @@ export component AppWindow inherits Window {
                         action-type: ActionType.navigate-dir,
                         schema-name: "",
                         line-index: 0,
-                        pair-index: 0,
+                        key-data-index: 0,
                         new-value: root.file-browser-dir,
                     });
                     file-dialog.show();
@@ -216,7 +216,7 @@ export component AppWindow inherits Window {
                             action-type: ActionType.exit,
                             schema-name: "",
                             line-index: 0,
-                            pair-index: 0,
+                            key-data-index: 0,
                             new-value: "",
                         });
                     }
@@ -257,7 +257,7 @@ export component AppWindow inherits Window {
                                 action-type: ActionType.switch-list,
                                 schema-name: "",
                                 line-index: ti,
-                                pair-index: 0,
+                                key-data-index: 0,
                                 new-value: "",
                             });
                         }
@@ -271,7 +271,7 @@ export component AppWindow inherits Window {
                             action-type: ActionType.add-list,
                             schema-name: "",
                             line-index: 0,
-                            pair-index: 0,
+                            key-data-index: 0,
                             new-value: "",
                         });
                     }
@@ -292,7 +292,7 @@ export component AppWindow inherits Window {
                         action-type: ActionType.remove-list,
                         schema-name: "",
                         line-index: root.active-list-index,
-                        pair-index: 0,
+                        key-data-index: 0,
                         new-value: "",
                     });
                 }
@@ -316,7 +316,7 @@ export component AppWindow inherits Window {
                         action-type: ActionType.add-line,
                         schema-name: schema-selector.current-value,
                         line-index: 0,
-                        pair-index: 0,
+                        key-data-index: 0,
                         new-value: "",
                     });
                 }
@@ -336,7 +336,7 @@ export component AppWindow inherits Window {
                     line-index: i;
                     validate-epoch: root.validate-epoch;
                     focus-line: root.first-invalid-line;
-                    focus-pair: root.first-invalid-pair;
+                    focus-key-data: root.first-invalid-key-data;
                     dispatch(action) => { root.dispatch(action); }
                 }
             }
