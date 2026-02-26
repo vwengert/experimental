@@ -20,7 +20,7 @@ export component AppWindow inherits Window {
     in-out property <bool> is-dirty: false;
     in-out property <string> file-browser-dir;
     in-out property <[FileEntry]> file-browser-entries;
-    in-out property <string> file-browser-file-name: "lists.json";
+    in-out property <string> file-browser-file-name;
     // Focus-first-invalid support: epoch increments each validate, line/pair hold the target
     in-out property <int> validate-epoch: 0;
     in-out property <int> first-invalid-line: -1;

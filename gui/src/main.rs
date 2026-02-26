@@ -16,6 +16,7 @@ fn main() {
     let schemas = Schemas::load_default();
 
     let app = AppWindow::new().unwrap();
+    app.set_file_browser_file_name("lists.json".into());
 
     // Initialise the file browser to the current working directory
     let cwd = std::env::current_dir().unwrap_or_default();
