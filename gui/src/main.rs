@@ -30,6 +30,14 @@ fn main() {
     schema_names.sort();
     app.set_schema_names(ModelRc::from(Rc::new(VecModel::from(schema_names))));
 
+    // Populate init schema names (only elements allowed as first/init entry)
+    let init_schema_names: Vec<SharedString> = schemas
+        .init_element_names()
+        .iter()
+        .map(|k| SharedString::from(*k))
+        .collect();
+    app.set_init_schema_names(ModelRc::from(Rc::new(VecModel::from(init_schema_names))));
+
     // Populate list names: start with just "own"
     let list_names_model: Rc<VecModel<SharedString>> =
         Rc::new(VecModel::from(vec![SharedString::from("own")]));

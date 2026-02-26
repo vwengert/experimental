@@ -24,8 +24,12 @@ pub struct KeySpec {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ElementSchema(pub HashMap<String, KeySpec>);
+pub struct ElementSchema {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub allow_init: bool,
+    #[serde(flatten)]
+    pub fields: HashMap<String, KeySpec>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Schemas {
@@ -40,6 +44,17 @@ impl Schemas {
 
     pub fn units_for(&self, unit_type: &str) -> Option<&Vec<String>> {
         self.units.get(unit_type)
+    }
+
+    pub fn init_element_names(&self) -> Vec<&str> {
+        let mut names: Vec<&str> = self
+            .elements
+            .iter()
+            .filter(|(_, schema)| schema.allow_init)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        names.sort();
+        names
     }
 
     pub fn load_default() -> Self {
@@ -89,7 +104,7 @@ pub fn validate_keys_names(
     errors: &mut Vec<ValidationError>,
 ) {
     for key in element.params.keys() {
-        if !element_schema.0.contains_key(key) {
+        if !element_schema.fields.contains_key(key) {
             errors.push(ValidationError {
                 key: Some(key.clone()),
                 message: "Key not allowed for this element type".into(),
@@ -97,7 +112,7 @@ pub fn validate_keys_names(
         }
     }
 
-    for key in element_schema.0.keys() {
+    for key in element_schema.fields.keys() {
         if !element.params.contains_key(key) {
             errors.push(ValidationError {
                 key: Some(key.clone()),
@@ -112,7 +127,7 @@ pub fn validate_values(
     element: &Element,
     errors: &mut Vec<ValidationError>,
 ) {
-    for (key, key_spec) in &element_schema.0 {
+    for (key, key_spec) in &element_schema.fields {
         let Some(value) = element.params.get(key) else { continue };
 
         if !json_value_matches_type(value, key_spec.ty) {
@@ -130,5 +145,37 @@ pub fn json_value_matches_type(value: &serde_json::Value, expected: ValueType) -
         ValueType::Bool => value.is_boolean(),
         ValueType::Int => value.as_i64().is_some(),
         ValueType::Float => value.is_number(),
+    }
+}
+
+fn is_false(v: &bool) -> bool {
+    !v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_allow_init_field() {
+        let schemas = Schemas::load_default();
+
+        // Button and Container should have allow_init = true
+        let button = schemas.schema_for("Button").unwrap();
+        assert!(button.allow_init, "Button should have allow_init = true");
+        assert!(button.fields.contains_key("label"), "Button should have 'label' field");
+
+        let container = schemas.schema_for("Container").unwrap();
+        assert!(container.allow_init, "Container should have allow_init = true");
+
+        // TextField should not have allow_init
+        let text_field = schemas.schema_for("TextField").unwrap();
+        assert!(!text_field.allow_init, "TextField should have allow_init = false");
+
+        // init_element_names should return only init elements, sorted
+        let init_names = schemas.init_element_names();
+        assert!(init_names.contains(&"Button"));
+        assert!(init_names.contains(&"Container"));
+        assert!(!init_names.contains(&"TextField"));
     }
 }

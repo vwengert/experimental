@@ -13,6 +13,7 @@ export component AppWindow inherits Window {
     init => { Palette.color-scheme = ColorScheme.light; }
 
     in property <[string]> schema-names;
+    in property <[string]> init-schema-names;
     in-out property <[LineItem]> lines;
     in property <[string]> list-names;
     in-out property <int> active-list-index: 0;
@@ -305,7 +306,7 @@ export component AppWindow inherits Window {
             spacing: 8px;
 
             schema-selector := ComboBox {
-                model: root.schema-names;
+                model: root.lines.length == 0 ? root.init-schema-names : root.schema-names;
             }
 
             Button {
@@ -331,6 +332,7 @@ export component AppWindow inherits Window {
                 for line[i] in root.lines: LineCard {
                     line: line;
                     schema-names: root.schema-names;
+                    init-schema-names: root.init-schema-names;
                     line-index: i;
                     validate-epoch: root.validate-epoch;
                     focus-line: root.first-invalid-line;

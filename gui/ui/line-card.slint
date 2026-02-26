@@ -75,6 +75,7 @@ component LineRow {
 export component LineCard inherits Rectangle {
     in property <LineItem> line;
     in property <[string]> schema-names;
+    in property <[string]> init-schema-names;
     in property <int> line-index;
     // Focus-first-invalid support
     in property <int> validate-epoch: 0;
@@ -97,7 +98,7 @@ export component LineCard inherits Rectangle {
             alignment: start;
 
             ComboBox {
-                model: root.schema-names;
+                model: root.line-index == 0 ? root.init-schema-names : root.schema-names;
                 current-value: root.line.title;
                 selected(value) => {
                     root.dispatch({
@@ -110,7 +111,7 @@ export component LineCard inherits Rectangle {
                 }
             }
 
-            Button {
+            if root.line-index != 0: Button {
                 text: "✕";
                 clicked => {
                     root.dispatch({

@@ -5,6 +5,7 @@
   },
   "elements": {
     "Button": {
+      "allow_init": true,
       "label": { "ty": "Str" },
       "onClick": { "ty": "Str" },
       "disabled": { "ty": "Bool" }
@@ -15,6 +16,7 @@
       "value": { "ty": "Str" }
     },
     "Container": {
+      "allow_init": true,
       "width": { "ty": "Float", "unit": "length" },
       "height": { "ty": "Float", "unit": "length" },
       "padding": { "ty": "Int", "unit": "length" }
