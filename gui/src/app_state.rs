@@ -4,9 +4,9 @@ use std::rc::Rc;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use domain::domain::{ItemData, ItemLine, ItemList, ItemSet};
-use domain::schema::{Schemas, ValueType};
+use domain::schema::Schemas;
 
-use crate::util::{build_key_data_for_schema, build_unit_options, read_dir_entries};
+use crate::util::{build_key_data_for_schema, build_unit_options, read_dir_entries, validate_value_str};
 use crate::{Action, ActionType, AppWindow, KeyData, LineItem};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -21,20 +21,6 @@ pub struct AppState {
     pub app_weak: slint::Weak<AppWindow>,
 }
 
-// ── Validation helper ─────────────────────────────────────────────────────────
-
-/// Returns true if the string `value` is non-empty and matches the expected `ty`.
-fn validate_value_str(value: &str, ty: ValueType) -> bool {
-    if value.is_empty() {
-        return false;
-    }
-    match ty {
-        ValueType::Str => true,
-        ValueType::Int => value.parse::<i64>().is_ok(),
-        ValueType::Float => value.parse::<f64>().is_ok(),
-        ValueType::Bool => matches!(value.to_lowercase().as_str(), "true" | "false"),
-    }
-}
 
 // ── AppState implementation ───────────────────────────────────────────────────
 
@@ -453,3 +439,4 @@ impl AppState {
         }
     }
 }
+
