@@ -9,6 +9,7 @@ export struct KeyValuePair {
     value: string,
     unit: string,
     unit-options: [string],
+    is-valid: bool,
 }
 
 export struct LineItem {
@@ -29,6 +30,7 @@ export enum ActionType {
     load-list,
     navigate-dir,
     exit,
+    validate-before-save,
 }
 
 export struct Action {

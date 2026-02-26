@@ -20,6 +20,14 @@ export component AppWindow inherits Window {
     in-out property <string> file-browser-dir;
     in-out property <[FileEntry]> file-browser-entries;
     in-out property <string> file-browser-file-name: "lists.json";
+    // Focus-first-invalid support: epoch increments each validate, line/pair hold the target
+    in-out property <int> validate-epoch: 0;
+    in-out property <int> first-invalid-line: -1;
+    in-out property <int> first-invalid-pair: -1;
+    // Incremented by Rust to trigger the validation-error popup
+    in-out property <int> validation-error-epoch: 0;
+    // Set by Rust to true when pre-save validation passes, triggering the file dialog
+    in-out property <bool> open-save-dialog: false;
 
     // File dialog state
     private property <bool> file-dialog-is-save: true;
@@ -107,6 +115,62 @@ export component AppWindow inherits Window {
         }
     }
 
+    // Validation-error popup – shown when save is blocked due to invalid fields
+    validation-error-dialog := PopupWindow {
+        x: (root.width - 340px) / 2;
+        y: (root.height - 140px) / 2;
+        width: 340px;
+        height: 140px;
+        close-policy: PopupClosePolicy.no-auto-close;
+
+        Rectangle {
+            background: #f5f5f5;
+            border-width: 1px;
+            border-color: #999999;
+            border-radius: 6px;
+
+            VerticalBox {
+                padding: 12px;
+                spacing: 8px;
+
+                Text {
+                    text: "Some fields contain invalid values. Please correct them before saving.";
+                    wrap: word-wrap;
+                    color: black;
+                }
+
+                HorizontalBox {
+                    alignment: end;
+
+                    Button {
+                        text: "OK";
+                        clicked => { validation-error-dialog.close(); }
+                    }
+                }
+            }
+        }
+    }
+
+    changed validation-error-epoch => {
+        if validation-error-epoch > 0 {
+            validation-error-dialog.show();
+        }
+    }
+
+    changed open-save-dialog => {
+        if open-save-dialog {
+            open-save-dialog = false;
+            root.dispatch({
+                action-type: ActionType.navigate-dir,
+                schema-name: "",
+                line-index: 0,
+                pair-index: 0,
+                new-value: root.file-browser-dir,
+            });
+            file-dialog.show();
+        }
+    }
+
     // File menu
     MenuBar {
         Menu {
@@ -117,13 +181,12 @@ export component AppWindow inherits Window {
                 activated => {
                     root.file-dialog-is-save = true;
                     root.dispatch({
-                        action-type: ActionType.navigate-dir,
+                        action-type: ActionType.validate-before-save,
                         schema-name: "",
                         line-index: 0,
                         pair-index: 0,
-                        new-value: root.file-browser-dir,
+                        new-value: "",
                     });
-                    file-dialog.show();
                 }
             }
 
@@ -269,6 +332,9 @@ export component AppWindow inherits Window {
                     line: line;
                     schema-names: root.schema-names;
                     line-index: i;
+                    validate-epoch: root.validate-epoch;
+                    focus-line: root.first-invalid-line;
+                    focus-pair: root.first-invalid-pair;
                     dispatch(action) => { root.dispatch(action); }
                 }
             }
