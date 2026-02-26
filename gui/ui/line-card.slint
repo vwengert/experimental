@@ -1,9 +1,9 @@
 import { Button, ComboBox, HorizontalBox, LineEdit } from "std-widgets.slint";
-import { KeyValuePair, LineItem, ActionType, Action } from "structs.slint";
+import { KeyData, LineItem, ActionType, Action } from "structs.slint";
 
 // One row in a LineCard: shows a key-value pair with validation feedback.
 component LineRow {
-    in property <KeyValuePair> pair;
+    in property <KeyData> pair;
     in property <int> pair-index;
     in property <int> line-index;
     in property <int> validate-epoch: 0;
@@ -125,7 +125,7 @@ export component LineCard inherits Rectangle {
             }
         }
 
-        for pair[j] in root.line.pairs: LineRow {
+        for pair[j] in root.line.data: LineRow {
             pair: pair;
             pair-index: j;
             line-index: root.line-index;
