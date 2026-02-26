@@ -7,7 +7,7 @@ use domain::domain::{ItemData, ItemLine, ItemList, ItemSet};
 use domain::schema::{Schemas, ValueType};
 
 use crate::util::{build_pairs_for_schema, build_unit_options, read_dir_entries, set_lines_model};
-use crate::{Action, ActionType, AppWindow, KeyValuePair, LineItem};
+use crate::{Action, ActionType, AppWindow, KeyData, LineItem};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -15,7 +15,7 @@ use crate::{Action, ActionType, AppWindow, KeyValuePair, LineItem};
 pub struct AppState {
     pub schemas: Schemas,
     pub list_models: Rc<RefCell<Vec<Rc<VecModel<LineItem>>>>>,
-    pub all_pairs_models: Rc<RefCell<Vec<Rc<RefCell<Vec<Rc<VecModel<KeyValuePair>>>>>>>>,
+    pub all_pairs_models: Rc<RefCell<Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>>>>,
     pub active_list_idx: Rc<RefCell<usize>>,
     pub list_names: Rc<VecModel<SharedString>>,
     pub app_weak: slint::Weak<AppWindow>,
@@ -132,7 +132,7 @@ pub fn handle_add_line(state: &AppState, action: &Action) {
         let pairs_model_rc = ModelRc::from(pairs_vec.clone());
         pairs_models.borrow_mut().push(pairs_vec);
 
-        lines_model.push(LineItem { title: action.schema_name.clone(), pairs: pairs_model_rc });
+        lines_model.push(LineItem { title: action.schema_name.clone(), data: pairs_model_rc });
     }
 }
 
@@ -332,15 +332,15 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
     }
 
     let mut new_list_models: Vec<Rc<VecModel<LineItem>>> = Vec::new();
-    let mut new_pairs_models: Vec<Rc<RefCell<Vec<Rc<VecModel<KeyValuePair>>>>>> = Vec::new();
+    let mut new_pairs_models: Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>> = Vec::new();
 
     for item_list in &item_data.lists {
         let line_model: Rc<VecModel<LineItem>> = Rc::new(VecModel::<LineItem>::default());
-        let pairs_for_list: Rc<RefCell<Vec<Rc<VecModel<KeyValuePair>>>>> =
+        let pairs_for_list: Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>> =
             Rc::new(RefCell::new(Vec::new()));
 
         for item_line in &item_list.lines {
-            let pairs: Vec<KeyValuePair> = item_line
+            let pairs: Vec<KeyData> = item_line
                 .sets
                 .iter()
                 .map(|p| {
@@ -352,7 +352,7 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
                         .unwrap_or_else(|| {
                             ModelRc::from(Rc::new(VecModel::<SharedString>::default()))
                         });
-                    KeyValuePair {
+                    KeyData {
                         key: SharedString::from(p.key.as_str()),
                         value: SharedString::from(p.value.as_str()),
                         unit: SharedString::from(p.unit.as_deref().unwrap_or("")),
@@ -366,7 +366,7 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
             pairs_for_list.borrow_mut().push(pairs_vec.clone());
             line_model.push(LineItem {
                 title: SharedString::from(item_line.title.as_str()),
-                pairs: ModelRc::from(pairs_vec),
+                data: ModelRc::from(pairs_vec),
             });
         }
 

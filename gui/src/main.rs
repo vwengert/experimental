@@ -16,6 +16,7 @@ fn main() {
     let schemas = Schemas::load_default();
 
     let app = AppWindow::new().unwrap();
+    app.set_file_browser_file_name("lists.json".into());
 
     // Initialise the file browser to the current working directory
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -51,10 +52,10 @@ fn main() {
     ));
 
     // Create one pairs-models Vec per list
-    let all_pairs_models: Rc<RefCell<Vec<Rc<RefCell<Vec<Rc<VecModel<KeyValuePair>>>>>>>> =
+    let all_pairs_models: Rc<RefCell<Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>>>> =
         Rc::new(RefCell::new(
             (0..LIST_COUNT)
-                .map(|_| Rc::new(RefCell::new(Vec::<Rc<VecModel<KeyValuePair>>>::new())))
+                .map(|_| Rc::new(RefCell::new(Vec::<Rc<VecModel<KeyData>>>::new())))
                 .collect(),
         ));
 

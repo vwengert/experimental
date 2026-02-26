@@ -4,7 +4,7 @@ export struct FileEntry {
     is-dir: bool,
 }
 
-export struct KeyValuePair {
+export struct KeyData {
     key: string,
     value: string,
     unit: string,
@@ -14,7 +14,7 @@ export struct KeyValuePair {
 
 export struct LineItem {
     title: string,
-    pairs: [KeyValuePair],
+    data: [KeyData],
 }
 
 export enum ActionType {

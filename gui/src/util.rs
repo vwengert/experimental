@@ -5,7 +5,7 @@ use slint::{ModelRc, SharedString, VecModel};
 
 use domain::schema::{ElementSchema, KeySpec};
 
-use crate::{FileEntry, KeyValuePair};
+use crate::{FileEntry, KeyData};
 use crate::dispatch::AppState;
 
 pub fn set_lines_model(state: &AppState, idx: usize) {
@@ -32,7 +32,7 @@ pub fn build_unit_options(
     }
 }
 
-pub fn make_pair(key: &str, spec: &KeySpec, units: &HashMap<String, Vec<String>>) -> KeyValuePair {
+pub fn make_pair(key: &str, spec: &KeySpec, units: &HashMap<String, Vec<String>>) -> KeyData {
     let unit_options = build_unit_options(spec, units);
     let unit = match &spec.unit {
         None => SharedString::new(),
@@ -42,14 +42,14 @@ pub fn make_pair(key: &str, spec: &KeySpec, units: &HashMap<String, Vec<String>>
             .map(|s| SharedString::from(s.as_str()))
             .unwrap_or_default(),
     };
-    KeyValuePair { key: SharedString::from(key), value: SharedString::new(), unit, unit_options, is_valid: false }
+    KeyData { key: SharedString::from(key), value: SharedString::new(), unit, unit_options, is_valid: false }
 }
 
 pub fn build_pairs_for_schema(
     schema: &ElementSchema,
     units: &HashMap<String, Vec<String>>,
-) -> Vec<KeyValuePair> {
-    let mut pairs: Vec<KeyValuePair> =
+) -> Vec<KeyData> {
+    let mut pairs: Vec<KeyData> =
         schema.fields.iter().map(|(k, spec)| make_pair(k.as_str(), spec, units)).collect();
     pairs.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
     pairs

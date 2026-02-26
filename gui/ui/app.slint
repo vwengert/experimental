@@ -20,7 +20,7 @@ export component AppWindow inherits Window {
     in-out property <bool> is-dirty: false;
     in-out property <string> file-browser-dir;
     in-out property <[FileEntry]> file-browser-entries;
-    in-out property <string> file-browser-file-name: "lists.json";
+    in-out property <string> file-browser-file-name;
     // Focus-first-invalid support: epoch increments each validate, line/pair hold the target
     in-out property <int> validate-epoch: 0;
     in-out property <int> first-invalid-line: -1;
@@ -153,13 +153,13 @@ export component AppWindow inherits Window {
     }
 
     changed validation-error-epoch => {
-        if validation-error-epoch > 0 {
+        if (validation-error-epoch > 0) {
             validation-error-dialog.show();
         }
     }
 
     changed open-save-dialog => {
-        if open-save-dialog {
+        if (open-save-dialog) {
             open-save-dialog = false;
             root.dispatch({
                 action-type: ActionType.navigate-dir,
@@ -209,7 +209,7 @@ export component AppWindow inherits Window {
             MenuItem {
                 title: "Exit";
                 activated => {
-                    if root.is-dirty {
+                    if (root.is-dirty) {
                         confirm-exit-dialog.show();
                     } else {
                         root.dispatch({
