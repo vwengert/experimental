@@ -20,6 +20,10 @@ export component AppWindow inherits Window {
     in-out property <string> file-browser-dir;
     in-out property <[FileEntry]> file-browser-entries;
     in-out property <string> file-browser-file-name: "lists.json";
+    // Focus-first-invalid support: epoch increments each validate, line/pair hold the target
+    in-out property <int> validate-epoch: 0;
+    in-out property <int> first-invalid-line: -1;
+    in-out property <int> first-invalid-pair: -1;
 
     // File dialog state
     private property <bool> file-dialog-is-save: true;
@@ -257,6 +261,19 @@ export component AppWindow inherits Window {
                     });
                 }
             }
+
+            Button {
+                text: "Validate";
+                clicked => {
+                    root.dispatch({
+                        action-type: ActionType.validate-all,
+                        schema-name: "",
+                        line-index: 0,
+                        pair-index: 0,
+                        new-value: "",
+                    });
+                }
+            }
         }
 
         ScrollView {
@@ -269,6 +286,9 @@ export component AppWindow inherits Window {
                     line: line;
                     schema-names: root.schema-names;
                     line-index: i;
+                    validate-epoch: root.validate-epoch;
+                    focus-line: root.first-invalid-line;
+                    focus-pair: root.first-invalid-pair;
                     dispatch(action) => { root.dispatch(action); }
                 }
             }

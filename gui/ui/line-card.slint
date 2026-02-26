@@ -1,10 +1,85 @@
 import { Button, ComboBox, HorizontalBox, LineEdit } from "std-widgets.slint";
 import { KeyValuePair, LineItem, ActionType, Action } from "structs.slint";
 
+// One row in a LineCard: shows a key-value pair with validation feedback.
+component LineRow {
+    in property <KeyValuePair> pair;
+    in property <int> pair-index;
+    in property <int> line-index;
+    in property <int> validate-epoch: 0;
+    in property <int> focus-pair: -1;
+    in property <int> focus-line: -1;
+
+    callback dispatch(Action);
+
+    // When the epoch increments (a new validate-all ran), focus this field if requested.
+    changed validate-epoch => {
+        if validate-epoch > 0 && focus-line == line-index && focus-pair == pair-index {
+            le.focus();
+        }
+    }
+
+    HorizontalBox {
+        alignment: start;
+        spacing: 8px;
+
+        Text {
+            text: pair.key + ":";
+            min-width: 150px;
+            vertical-alignment: center;
+        }
+
+        le := LineEdit {
+            text: pair.value;
+            min-width: 200px;
+            edited(new-value) => {
+                root.dispatch({
+                    action-type: ActionType.value-changed,
+                    schema-name: "",
+                    line-index: root.line-index,
+                    pair-index: root.pair-index,
+                    new-value: new-value,
+                });
+            }
+        }
+
+        // Red cross shown while the value is invalid
+        if !pair.is-valid: Text {
+            text: "✗";
+            color: red;
+            font-size: 16px;
+            vertical-alignment: center;
+        }
+
+        if pair.unit-options.length > 0: ComboBox {
+            model: pair.unit-options;
+            current-value: pair.unit;
+            selected(new-unit) => {
+                root.dispatch({
+                    action-type: ActionType.unit-changed,
+                    schema-name: "",
+                    line-index: root.line-index,
+                    pair-index: root.pair-index,
+                    new-value: new-unit,
+                });
+            }
+        }
+
+        if pair.unit-options.length == 0 && pair.unit != "": Text {
+            text: pair.unit;
+            vertical-alignment: center;
+        }
+    }
+}
+
 export component LineCard inherits Rectangle {
     in property <LineItem> line;
     in property <[string]> schema-names;
     in property <int> line-index;
+    // Focus-first-invalid support
+    in property <int> validate-epoch: 0;
+    in property <int> focus-line: -1;
+    in property <int> focus-pair: -1;
 
     callback dispatch(Action);
 
@@ -49,48 +124,14 @@ export component LineCard inherits Rectangle {
             }
         }
 
-        for pair[j] in root.line.pairs: HorizontalBox {
-            alignment: start;
-            spacing: 8px;
-
-            Text {
-                text: pair.key + ":";
-                min-width: 150px;
-                vertical-alignment: center;
-            }
-
-            LineEdit {
-                text: pair.value;
-                min-width: 200px;
-                edited(new-value) => {
-                    root.dispatch({
-                        action-type: ActionType.value-changed,
-                        schema-name: "",
-                        line-index: root.line-index,
-                        pair-index: j,
-                        new-value: new-value,
-                    });
-                }
-            }
-
-            if pair.unit-options.length > 0: ComboBox {
-                model: pair.unit-options;
-                current-value: pair.unit;
-                selected(new-unit) => {
-                    root.dispatch({
-                        action-type: ActionType.unit-changed,
-                        schema-name: "",
-                        line-index: root.line-index,
-                        pair-index: j,
-                        new-value: new-unit,
-                    });
-                }
-            }
-
-            if pair.unit-options.length == 0 && pair.unit != "": Text {
-                text: pair.unit;
-                vertical-alignment: center;
-            }
+        for pair[j] in root.line.pairs: LineRow {
+            pair: pair;
+            pair-index: j;
+            line-index: root.line-index;
+            validate-epoch: root.validate-epoch;
+            focus-line: root.focus-line;
+            focus-pair: root.focus-pair;
+            dispatch(action) => { root.dispatch(action); }
         }
     }
 }

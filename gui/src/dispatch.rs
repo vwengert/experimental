@@ -4,7 +4,7 @@ use std::rc::Rc;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use domain::domain::{ItemData, ItemLine, ItemList, ItemSet};
-use domain::schema::{KeySpec, Schemas};
+use domain::schema::{KeySpec, Schemas, ValueType};
 
 use crate::{Action, ActionType, AppWindow, FileEntry, KeyValuePair, LineItem};
 
@@ -40,7 +40,22 @@ pub fn make_pair(
             (first, ModelRc::from(model))
         }
     };
-    KeyValuePair { key: SharedString::from(key), value: SharedString::new(), unit, unit_options }
+    KeyValuePair { key: SharedString::from(key), value: SharedString::new(), unit, unit_options, is_valid: false }
+}
+
+// ── Validation helper ─────────────────────────────────────────────────────────
+
+/// Returns true if the string `value` is non-empty and matches the expected `ty`.
+fn validate_value_str(value: &str, ty: ValueType) -> bool {
+    if value.is_empty() {
+        return false;
+    }
+    match ty {
+        ValueType::Str => true,
+        ValueType::Int => value.parse::<i64>().is_ok(),
+        ValueType::Float => value.parse::<f64>().is_ok(),
+        ValueType::Bool => matches!(value.to_lowercase().as_str(), "true" | "false"),
+    }
 }
 
 // ── Individual action handlers ────────────────────────────────────────────────
@@ -72,6 +87,7 @@ pub fn handle_add_line(state: &AppState, action: &Action) {
 
 pub fn handle_value_changed(state: &AppState, action: &Action) {
     let active = *state.active_list_idx.borrow();
+    let lines_model = state.list_models.borrow()[active].clone();
     let pairs_models = state.all_pairs_models.borrow()[active].clone();
 
     let li = action.line_index as usize;
@@ -79,7 +95,17 @@ pub fn handle_value_changed(state: &AppState, action: &Action) {
     let borrowed = pairs_models.borrow();
     if let Some(pairs_model) = borrowed.get(li) {
         if let Some(mut pair) = pairs_model.row_data(pi) {
+            let new_valid = lines_model
+                .row_data(li)
+                .and_then(|line| state.schemas.schema_for(line.title.as_str()))
+                .and_then(|schema| schema.0.get(pair.key.as_str()))
+                .map(|spec| validate_value_str(action.new_value.as_str(), spec.ty))
+                .unwrap_or(!action.new_value.is_empty());
             pair.value = action.new_value.clone();
+            // Only update the model when something actually changed to avoid unnecessary redraws
+            if new_valid != pair.is_valid {
+                pair.is_valid = new_valid;
+            }
             pairs_model.set_row_data(pi, pair);
         }
     }
@@ -326,6 +352,7 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
                         value: SharedString::from(p.value.as_str()),
                         unit: SharedString::from(p.unit.as_deref().unwrap_or("")),
                         unit_options,
+                        is_valid: true,
                     }
                 })
                 .collect();
@@ -361,6 +388,49 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
     }
 }
 
+pub fn handle_validate_all(state: &AppState) {
+    let active = *state.active_list_idx.borrow();
+    let lines_model = state.list_models.borrow()[active].clone();
+    let pairs_models = state.all_pairs_models.borrow()[active].clone();
+
+    let mut first_invalid_line: i32 = -1;
+    let mut first_invalid_pair: i32 = -1;
+
+    let borrowed = pairs_models.borrow();
+    for li in 0..lines_model.row_count() {
+        if let (Some(line), Some(pairs_model)) =
+            (lines_model.row_data(li), borrowed.get(li))
+        {
+            let schema = state.schemas.schema_for(line.title.as_str());
+            for pi in 0..pairs_model.row_count() {
+                if let Some(mut pair) = pairs_model.row_data(pi) {
+                    let is_valid = schema
+                        .and_then(|s| s.0.get(pair.key.as_str()))
+                        .map(|spec| validate_value_str(pair.value.as_str(), spec.ty))
+                        .unwrap_or(!pair.value.is_empty());
+                    if is_valid != pair.is_valid {
+                        pair.is_valid = is_valid;
+                        pairs_model.set_row_data(pi, pair);
+                    }
+                    if !is_valid && first_invalid_line == -1 {
+                        first_invalid_line = li as i32;
+                        first_invalid_pair = pi as i32;
+                    }
+                }
+            }
+        }
+    }
+    drop(borrowed);
+
+    if let Some(app) = state.app_weak.upgrade() {
+        // Update focus properties; incrementing the epoch triggers the changed callback
+        // in the Slint UI so the first invalid LineEdit gains keyboard focus.
+        app.set_first_invalid_line(first_invalid_line);
+        app.set_first_invalid_pair(first_invalid_pair);
+        app.set_validate_epoch(app.get_validate_epoch() + 1);
+    }
+}
+
 pub fn handle_exit(state: &AppState) {
     if let Some(app) = state.app_weak.upgrade() {
         let _ = app.hide();
@@ -377,6 +447,7 @@ pub fn handle_dispatch(state: &AppState, action: Action) {
             | ActionType::SaveList
             | ActionType::LoadList
             | ActionType::NavigateDir
+            | ActionType::ValidateAll
             | ActionType::Exit
     );
 
@@ -392,6 +463,7 @@ pub fn handle_dispatch(state: &AppState, action: Action) {
         ActionType::SaveList => handle_save_list(state, &action),
         ActionType::LoadList => handle_load_list(state, &action),
         ActionType::NavigateDir => handle_navigate_dir(state, &action),
+        ActionType::ValidateAll => handle_validate_all(state),
         ActionType::Exit => handle_exit(state),
     }
 
