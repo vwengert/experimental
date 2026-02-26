@@ -76,7 +76,7 @@ export component FileDialog inherits PopupWindow {
 
                             hov := TouchArea {
                                 clicked => {
-                                    if entry.is-dir {
+                                    if (entry.is-dir) {
                                         root.navigate(root.current-dir + "/" + entry.name);
                                     } else {
                                         root.file-name = entry.name;
