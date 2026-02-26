@@ -328,8 +328,11 @@ pub fn handle_save_list(state: &AppState, action: &Action) {
         return;
     }
     // Validate all fields across every list before writing. If any are invalid,
-    // focus the first invalid field and abort the save.
+    // focus the first invalid field, show the error popup, and abort the save.
     if !validate_all_and_focus(state) {
+        if let Some(app) = state.app_weak.upgrade() {
+            app.set_validation_error_epoch(app.get_validation_error_epoch() + 1);
+        }
         return;
     }
     let list_models_ref = state.list_models.borrow();
