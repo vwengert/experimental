@@ -58,6 +58,84 @@ fn validate_value_str(value: &str, ty: ValueType) -> bool {
     }
 }
 
+/// Validates every pair in every list. Updates each pair's `is_valid` flag, sets
+/// the app focus properties to the first invalid field (switching the active list if
+/// needed), and returns `true` only when all fields are valid.
+fn validate_all_and_focus(state: &AppState) -> bool {
+    // Collect (list_idx, line_idx, pair_idx, is_valid) results while borrowing models.
+    struct InvalidField {
+        list_idx: usize,
+        line_idx: i32,
+        pair_idx: i32,
+    }
+    let mut first_invalid: Option<InvalidField> = None;
+
+    {
+        let list_models = state.list_models.borrow();
+        let all_pairs = state.all_pairs_models.borrow();
+
+        for list_idx in 0..list_models.len() {
+            let lines_model = &list_models[list_idx];
+            let pairs_for_list = all_pairs[list_idx].borrow();
+
+            for li in 0..lines_model.row_count() {
+                if let (Some(line), Some(pairs_model)) =
+                    (lines_model.row_data(li), pairs_for_list.get(li))
+                {
+                    let schema = state.schemas.schema_for(line.title.as_str());
+                    for pi in 0..pairs_model.row_count() {
+                        if let Some(mut pair) = pairs_model.row_data(pi) {
+                            let is_valid = schema
+                                .and_then(|s| s.0.get(pair.key.as_str()))
+                                .map(|spec| validate_value_str(pair.value.as_str(), spec.ty))
+                                .unwrap_or(!pair.value.is_empty());
+                            if is_valid != pair.is_valid {
+                                pair.is_valid = is_valid;
+                                pairs_model.set_row_data(pi, pair);
+                            }
+                            if !is_valid && first_invalid.is_none() {
+                                first_invalid = Some(InvalidField {
+                                    list_idx,
+                                    line_idx: li as i32,
+                                    pair_idx: pi as i32,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } // list_models and all_pairs borrows released here
+
+    let all_valid = first_invalid.is_none();
+
+    if let Some(app) = state.app_weak.upgrade() {
+        let (invalid_line, invalid_pair) = match &first_invalid {
+            Some(f) => (f.line_idx, f.pair_idx),
+            None => (-1, -1),
+        };
+
+        // If the first invalid field is in a different list, switch to it.
+        if let Some(f) = &first_invalid {
+            let current = *state.active_list_idx.borrow();
+            if current != f.list_idx {
+                *state.active_list_idx.borrow_mut() = f.list_idx;
+                let model = state.list_models.borrow()[f.list_idx].clone();
+                app.set_active_list_index(f.list_idx as i32);
+                app.set_lines(ModelRc::from(model));
+            }
+        }
+
+        app.set_first_invalid_line(invalid_line);
+        app.set_first_invalid_pair(invalid_pair);
+        // Incrementing the epoch triggers the `changed` handler in LineRow to focus
+        // the first invalid LineEdit.
+        app.set_validate_epoch(app.get_validate_epoch() + 1);
+    }
+
+    all_valid
+}
+
 // ── Individual action handlers ────────────────────────────────────────────────
 
 pub fn handle_add_line(state: &AppState, action: &Action) {
@@ -249,6 +327,11 @@ pub fn handle_save_list(state: &AppState, action: &Action) {
     if path.is_empty() {
         return;
     }
+    // Validate all fields across every list before writing. If any are invalid,
+    // focus the first invalid field and abort the save.
+    if !validate_all_and_focus(state) {
+        return;
+    }
     let list_models_ref = state.list_models.borrow();
     let all_pairs_ref = state.all_pairs_models.borrow();
     let mut item_lists: Vec<ItemList> = Vec::new();
@@ -388,49 +471,6 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
     }
 }
 
-pub fn handle_validate_all(state: &AppState) {
-    let active = *state.active_list_idx.borrow();
-    let lines_model = state.list_models.borrow()[active].clone();
-    let pairs_models = state.all_pairs_models.borrow()[active].clone();
-
-    let mut first_invalid_line: i32 = -1;
-    let mut first_invalid_pair: i32 = -1;
-
-    let borrowed = pairs_models.borrow();
-    for li in 0..lines_model.row_count() {
-        if let (Some(line), Some(pairs_model)) =
-            (lines_model.row_data(li), borrowed.get(li))
-        {
-            let schema = state.schemas.schema_for(line.title.as_str());
-            for pi in 0..pairs_model.row_count() {
-                if let Some(mut pair) = pairs_model.row_data(pi) {
-                    let is_valid = schema
-                        .and_then(|s| s.0.get(pair.key.as_str()))
-                        .map(|spec| validate_value_str(pair.value.as_str(), spec.ty))
-                        .unwrap_or(!pair.value.is_empty());
-                    if is_valid != pair.is_valid {
-                        pair.is_valid = is_valid;
-                        pairs_model.set_row_data(pi, pair);
-                    }
-                    if !is_valid && first_invalid_line == -1 {
-                        first_invalid_line = li as i32;
-                        first_invalid_pair = pi as i32;
-                    }
-                }
-            }
-        }
-    }
-    drop(borrowed);
-
-    if let Some(app) = state.app_weak.upgrade() {
-        // Update focus properties; incrementing the epoch triggers the changed callback
-        // in the Slint UI so the first invalid LineEdit gains keyboard focus.
-        app.set_first_invalid_line(first_invalid_line);
-        app.set_first_invalid_pair(first_invalid_pair);
-        app.set_validate_epoch(app.get_validate_epoch() + 1);
-    }
-}
-
 pub fn handle_exit(state: &AppState) {
     if let Some(app) = state.app_weak.upgrade() {
         let _ = app.hide();
@@ -447,7 +487,6 @@ pub fn handle_dispatch(state: &AppState, action: Action) {
             | ActionType::SaveList
             | ActionType::LoadList
             | ActionType::NavigateDir
-            | ActionType::ValidateAll
             | ActionType::Exit
     );
 
@@ -463,7 +502,6 @@ pub fn handle_dispatch(state: &AppState, action: Action) {
         ActionType::SaveList => handle_save_list(state, &action),
         ActionType::LoadList => handle_load_list(state, &action),
         ActionType::NavigateDir => handle_navigate_dir(state, &action),
-        ActionType::ValidateAll => handle_validate_all(state),
         ActionType::Exit => handle_exit(state),
     }
 

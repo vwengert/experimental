@@ -261,19 +261,6 @@ export component AppWindow inherits Window {
                     });
                 }
             }
-
-            Button {
-                text: "Validate";
-                clicked => {
-                    root.dispatch({
-                        action-type: ActionType.validate-all,
-                        schema-name: "",
-                        line-index: 0,
-                        pair-index: 0,
-                        new-value: "",
-                    });
-                }
-            }
         }
 
         ScrollView {
