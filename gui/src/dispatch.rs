@@ -322,17 +322,19 @@ pub fn handle_navigate_dir(state: &AppState, action: &Action) {
     }
 }
 
+pub fn handle_validate_before_save(state: &AppState) {
+    if validate_all_and_focus(state) {
+        if let Some(app) = state.app_weak.upgrade() {
+            app.set_open_save_dialog(true);
+        }
+    } else if let Some(app) = state.app_weak.upgrade() {
+        app.set_validation_error_epoch(app.get_validation_error_epoch() + 1);
+    }
+}
+
 pub fn handle_save_list(state: &AppState, action: &Action) {
     let path = action.new_value.as_str();
     if path.is_empty() {
-        return;
-    }
-    // Validate all fields across every list before writing. If any are invalid,
-    // focus the first invalid field, show the error popup, and abort the save.
-    if !validate_all_and_focus(state) {
-        if let Some(app) = state.app_weak.upgrade() {
-            app.set_validation_error_epoch(app.get_validation_error_epoch() + 1);
-        }
         return;
     }
     let list_models_ref = state.list_models.borrow();
@@ -490,6 +492,7 @@ pub fn handle_dispatch(state: &AppState, action: Action) {
             | ActionType::SaveList
             | ActionType::LoadList
             | ActionType::NavigateDir
+            | ActionType::ValidateBeforeSave
             | ActionType::Exit
     );
 
@@ -506,6 +509,7 @@ pub fn handle_dispatch(state: &AppState, action: Action) {
         ActionType::LoadList => handle_load_list(state, &action),
         ActionType::NavigateDir => handle_navigate_dir(state, &action),
         ActionType::Exit => handle_exit(state),
+        ActionType::ValidateBeforeSave => handle_validate_before_save(state),
     }
 
     // Update the is-dirty property on the UI

@@ -26,6 +26,8 @@ export component AppWindow inherits Window {
     in-out property <int> first-invalid-pair: -1;
     // Incremented by Rust to trigger the validation-error popup
     in-out property <int> validation-error-epoch: 0;
+    // Set by Rust to true when pre-save validation passes, triggering the file dialog
+    in-out property <bool> open-save-dialog: false;
 
     // File dialog state
     private property <bool> file-dialog-is-save: true;
@@ -155,6 +157,20 @@ export component AppWindow inherits Window {
         }
     }
 
+    changed open-save-dialog => {
+        if open-save-dialog {
+            open-save-dialog = false;
+            root.dispatch({
+                action-type: ActionType.navigate-dir,
+                schema-name: "",
+                line-index: 0,
+                pair-index: 0,
+                new-value: root.file-browser-dir,
+            });
+            file-dialog.show();
+        }
+    }
+
     // File menu
     MenuBar {
         Menu {
@@ -165,13 +181,12 @@ export component AppWindow inherits Window {
                 activated => {
                     root.file-dialog-is-save = true;
                     root.dispatch({
-                        action-type: ActionType.navigate-dir,
+                        action-type: ActionType.validate-before-save,
                         schema-name: "",
                         line-index: 0,
                         pair-index: 0,
-                        new-value: root.file-browser-dir,
+                        new-value: "",
                     });
-                    file-dialog.show();
                 }
             }
 
