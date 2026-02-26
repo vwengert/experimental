@@ -86,7 +86,7 @@ fn validate_all_and_focus(state: &AppState) -> bool {
                     for pi in 0..pairs_model.row_count() {
                         if let Some(mut pair) = pairs_model.row_data(pi) {
                             let is_valid = schema
-                                .and_then(|s| s.0.get(pair.key.as_str()))
+                                .and_then(|s| s.fields.get(pair.key.as_str()))
                                 .map(|spec| validate_value_str(pair.value.as_str(), spec.ty))
                                 .unwrap_or(!pair.value.is_empty());
                             if is_valid != pair.is_valid {
@@ -149,7 +149,7 @@ pub fn handle_add_line(state: &AppState, action: &Action) {
     }
     if let Some(schema) = state.schemas.schema_for(name) {
         let mut pairs: Vec<KeyValuePair> = schema
-            .0
+            .fields
             .iter()
             .map(|(k, spec)| make_pair(k.as_str(), spec, &state.schemas.units))
             .collect();
@@ -176,7 +176,7 @@ pub fn handle_value_changed(state: &AppState, action: &Action) {
             let new_valid = lines_model
                 .row_data(li)
                 .and_then(|line| state.schemas.schema_for(line.title.as_str()))
-                .and_then(|schema| schema.0.get(pair.key.as_str()))
+                .and_then(|schema| schema.fields.get(pair.key.as_str()))
                 .map(|spec| validate_value_str(action.new_value.as_str(), spec.ty))
                 .unwrap_or(!action.new_value.is_empty());
             pair.value = action.new_value.clone();
@@ -213,7 +213,7 @@ pub fn handle_line_type_changed(state: &AppState, action: &Action) {
     let name = action.schema_name.as_str();
     if let Some(schema) = state.schemas.schema_for(name) {
         let mut pairs: Vec<KeyValuePair> = schema
-            .0
+            .fields
             .iter()
             .map(|(k, spec)| make_pair(k.as_str(), spec, &state.schemas.units))
             .collect();
@@ -409,7 +409,7 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
                     let unit_options = if let Some(schema) =
                         state.schemas.schema_for(&item_line.title)
                     {
-                        if let Some(key_spec) = schema.0.get(&p.key) {
+                        if let Some(key_spec) = schema.fields.get(&p.key) {
                             match &key_spec.unit {
                                 None => ModelRc::from(Rc::new(
                                     VecModel::<SharedString>::default(),
