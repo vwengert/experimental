@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-// ── Serialisable item structures ──────────────────────────────────────────────
-
 #[derive(Serialize, Deserialize)]
 pub struct ItemSet {
     pub key: String,
