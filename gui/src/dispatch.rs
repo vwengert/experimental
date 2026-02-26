@@ -6,7 +6,7 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use domain::domain::{ItemData, ItemLine, ItemList, ItemSet};
 use domain::schema::{Schemas, ValueType};
 
-use crate::util::{build_pairs_for_schema, build_unit_options, read_dir_entries};
+use crate::util::{build_pairs_for_schema, build_unit_options, read_dir_entries, set_lines_model};
 use crate::{Action, ActionType, AppWindow, KeyValuePair, LineItem};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -233,12 +233,7 @@ pub fn handle_add_list(state: &AppState) {
     state.all_pairs_models.borrow_mut().push(Rc::new(RefCell::new(Vec::new())));
     state.list_names.push(SharedString::from(format!("list {count}").as_str()));
     let new_idx = count;
-    *state.active_list_idx.borrow_mut() = new_idx;
-    if let Some(app) = state.app_weak.upgrade() {
-        app.set_active_list_index(new_idx as i32);
-        let new_model = state.list_models.borrow()[new_idx].clone();
-        app.set_lines(ModelRc::from(new_model));
-    }
+    set_lines_model(state, new_idx);
 }
 
 pub fn handle_remove_list(state: &AppState, action: &Action) {
@@ -252,12 +247,7 @@ pub fn handle_remove_list(state: &AppState, action: &Action) {
     state.list_names.remove(idx);
     let current = *state.active_list_idx.borrow();
     let new_active = if current >= idx && current > 0 { current - 1 } else { current };
-    *state.active_list_idx.borrow_mut() = new_active;
-    if let Some(app) = state.app_weak.upgrade() {
-        app.set_active_list_index(new_active as i32);
-        let new_model = state.list_models.borrow()[new_active].clone();
-        app.set_lines(ModelRc::from(new_model));
-    }
+    set_lines_model(state, new_active);
 }
 
 pub fn handle_navigate_dir(state: &AppState, action: &Action) {
