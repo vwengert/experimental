@@ -4,9 +4,10 @@ use std::rc::Rc;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use domain::domain::{ItemData, ItemLine, ItemList, ItemSet};
-use domain::schema::{KeySpec, Schemas, ValueType};
+use domain::schema::{Schemas, ValueType};
 
-use crate::{Action, ActionType, AppWindow, FileEntry, KeyValuePair, LineItem};
+use crate::util::{build_pairs_for_schema, build_unit_options, read_dir_entries};
+use crate::{Action, ActionType, AppWindow, KeyValuePair, LineItem};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -18,29 +19,6 @@ pub struct AppState {
     pub active_list_idx: Rc<RefCell<usize>>,
     pub list_names: Rc<VecModel<SharedString>>,
     pub app_weak: slint::Weak<AppWindow>,
-}
-
-pub fn make_pair(
-    key: &str,
-    spec: &KeySpec,
-    units: &std::collections::HashMap<String, Vec<String>>,
-) -> KeyValuePair {
-    let (unit, unit_options) = match &spec.unit {
-        None => (SharedString::new(), ModelRc::from(Rc::new(VecModel::<SharedString>::default()))),
-        Some(unit_type) => {
-            let unit_values: &[String] = units
-                .get(unit_type.as_str())
-                .map(|v| v.as_slice())
-                .unwrap_or(&[]);
-            let first =
-                unit_values.first().map(|s| SharedString::from(s.as_str())).unwrap_or_default();
-            let model: Rc<VecModel<SharedString>> = Rc::new(VecModel::from(
-                unit_values.iter().map(|s| SharedString::from(s.as_str())).collect::<Vec<_>>(),
-            ));
-            (first, ModelRc::from(model))
-        }
-    };
-    KeyValuePair { key: SharedString::from(key), value: SharedString::new(), unit, unit_options, is_valid: false }
 }
 
 // ── Validation helper ─────────────────────────────────────────────────────────
@@ -148,12 +126,7 @@ pub fn handle_add_line(state: &AppState, action: &Action) {
         return;
     }
     if let Some(schema) = state.schemas.schema_for(name) {
-        let mut pairs: Vec<KeyValuePair> = schema
-            .fields
-            .iter()
-            .map(|(k, spec)| make_pair(k.as_str(), spec, &state.schemas.units))
-            .collect();
-        pairs.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
+        let pairs = build_pairs_for_schema(schema, &state.schemas.units);
 
         let pairs_vec = Rc::new(VecModel::from(pairs));
         let pairs_model_rc = ModelRc::from(pairs_vec.clone());
@@ -212,12 +185,7 @@ pub fn handle_line_type_changed(state: &AppState, action: &Action) {
     let li = action.line_index as usize;
     let name = action.schema_name.as_str();
     if let Some(schema) = state.schemas.schema_for(name) {
-        let mut pairs: Vec<KeyValuePair> = schema
-            .fields
-            .iter()
-            .map(|(k, spec)| make_pair(k.as_str(), spec, &state.schemas.units))
-            .collect();
-        pairs.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
+        let pairs = build_pairs_for_schema(schema, &state.schemas.units);
 
         let borrowed = pairs_models.borrow();
         if let Some(pairs_model) = borrowed.get(li) {
@@ -292,20 +260,6 @@ pub fn handle_remove_list(state: &AppState, action: &Action) {
     }
 }
 
-pub fn read_dir_entries(path: &std::path::Path) -> Vec<FileEntry> {
-    let mut entries: Vec<FileEntry> = Vec::new();
-    if let Ok(read_dir) = std::fs::read_dir(path) {
-        for entry in read_dir.flatten() {
-            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-            let name = entry.file_name().to_string_lossy().to_string();
-            entries.push(FileEntry { name: SharedString::from(name.as_str()), is_dir });
-        }
-        // Directories first, then files, both sorted alphabetically
-        entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.as_str().cmp(b.name.as_str())));
-    }
-    entries
-}
-
 pub fn handle_navigate_dir(state: &AppState, action: &Action) {
     let path_str = action.new_value.as_str();
     if path_str.is_empty() {
@@ -367,9 +321,7 @@ pub fn handle_save_list(state: &AppState, action: &Action) {
         item_lists.push(ItemList { name, lines: item_lines });
     }
     let data = ItemData { lists: item_lists };
-    if let Ok(json) = serde_json::to_string_pretty(&data) {
-        let _ = std::fs::write(path, json);
-    }
+    let _ = domain::io::save(path, &data);
 
     if let Some(app) = state.app_weak.upgrade() {
         app.set_is_dirty(false);
@@ -381,11 +333,7 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
     if path.is_empty() {
         return;
     }
-    let json = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(_) => return,
-    };
-    let item_data: ItemData = match serde_json::from_str(&json) {
+    let item_data: ItemData = match domain::io::load(path) {
         Ok(d) => d,
         Err(_) => return,
     };
@@ -406,35 +354,14 @@ pub fn handle_load_list(state: &AppState, action: &Action) {
                 .sets
                 .iter()
                 .map(|p| {
-                    let unit_options = if let Some(schema) =
-                        state.schemas.schema_for(&item_line.title)
-                    {
-                        if let Some(key_spec) = schema.fields.get(&p.key) {
-                            match &key_spec.unit {
-                                None => ModelRc::from(Rc::new(
-                                    VecModel::<SharedString>::default(),
-                                )),
-                                Some(unit_type) => {
-                                    let unit_values: &[String] = state
-                                        .schemas
-                                        .units
-                                        .get(unit_type.as_str())
-                                        .map(|v| v.as_slice())
-                                        .unwrap_or(&[]);
-                                    ModelRc::from(Rc::new(VecModel::from(
-                                        unit_values
-                                            .iter()
-                                            .map(|s| SharedString::from(s.as_str()))
-                                            .collect::<Vec<_>>(),
-                                    )))
-                                }
-                            }
-                        } else {
+                    let unit_options = state
+                        .schemas
+                        .schema_for(&item_line.title)
+                        .and_then(|schema| schema.fields.get(&p.key))
+                        .map(|key_spec| build_unit_options(key_spec, &state.schemas.units))
+                        .unwrap_or_else(|| {
                             ModelRc::from(Rc::new(VecModel::<SharedString>::default()))
-                        }
-                    } else {
-                        ModelRc::from(Rc::new(VecModel::<SharedString>::default()))
-                    };
+                        });
                     KeyValuePair {
                         key: SharedString::from(p.key.as_str()),
                         value: SharedString::from(p.value.as_str()),

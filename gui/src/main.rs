@@ -4,7 +4,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 mod dispatch;
-use dispatch::{handle_dispatch, read_dir_entries, AppState};
+mod util;
+use dispatch::{handle_dispatch, AppState};
+use util::read_dir_entries;
 
 slint::include_modules!();
 

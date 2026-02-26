@@ -5,8 +5,6 @@ edition = "2024"
 
 [dependencies]
 domain = { path = "../domain" }
-serde = "1"
-serde_json = "1"
 slint = "1.15.1"
 
 [build-dependencies]
