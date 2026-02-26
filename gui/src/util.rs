@@ -3,19 +3,10 @@ use std::rc::Rc;
 
 use slint::{ModelRc, SharedString, VecModel};
 
-use domain::schema::{ElementSchema, KeySpec};
+use domain::schema::{ElementSchema, KeySpec, ValueType};
 
 use crate::{FileEntry, KeyData};
-use crate::dispatch::AppState;
 
-pub fn set_lines_model(state: &AppState, idx: usize) {
-    *state.active_list_idx.borrow_mut() = idx;
-    if let Some(app) = state.app_weak.upgrade() {
-        app.set_active_list_index(idx as i32);
-        let model = state.list_models.borrow()[idx].clone();
-        app.set_lines(ModelRc::from(model));
-    }
-}
 pub fn build_unit_options(
     spec: &KeySpec,
     units: &HashMap<String, Vec<String>>,
@@ -67,4 +58,17 @@ pub fn read_dir_entries(path: &std::path::Path) -> Vec<FileEntry> {
         entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.as_str().cmp(b.name.as_str())));
     }
     entries
+}
+
+/// Returns true if the string `value` is non-empty and matches the expected `ty`.
+pub fn validate_value_str(value: &str, ty: ValueType) -> bool {
+    if value.is_empty() {
+        return false;
+    }
+    match ty {
+        ValueType::Str => true,
+        ValueType::Int => value.parse::<i64>().is_ok(),
+        ValueType::Float => value.parse::<f64>().is_ok(),
+        ValueType::Bool => matches!(value.to_lowercase().as_str(), "true" | "false"),
+    }
 }

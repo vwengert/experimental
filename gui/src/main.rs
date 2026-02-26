@@ -3,9 +3,9 @@ use slint::{ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-mod dispatch;
+mod app_state;
 mod util;
-use dispatch::{handle_dispatch, AppState};
+use app_state::AppState;
 use util::read_dir_entries;
 
 slint::include_modules!();
@@ -76,7 +76,7 @@ fn main() {
 
     // Single dispatch callback that handles all actions
     app.on_dispatch(move |action| {
-        handle_dispatch(&state, action);
+        state.handle_dispatch(action);
     });
 
     app.run().unwrap();
