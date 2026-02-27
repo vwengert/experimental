@@ -1,4 +1,4 @@
-import { Button, ComboBox, Palette, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { AboutSlint, Button, ComboBox, Palette, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 import { LineItem, ActionType, Action, FileEntry } from "structs.slint";
 import { FileDialog } from "file-dialog.slint";
 import { LineCard } from "line-card.slint";
@@ -152,6 +152,16 @@ export component AppWindow inherits Window {
         }
     }
 
+    // About dialog
+    about-dialog := PopupWindow {
+        x: (root.width - 400px) / 2;
+        y: (root.height - 300px) / 2;
+        width: 400px;
+        height: 300px;
+
+        AboutSlint {}
+    }
+
     changed validation-error-epoch => {
         if (validation-error-epoch > 0) {
             validation-error-dialog.show();
@@ -205,7 +215,6 @@ export component AppWindow inherits Window {
                     file-dialog.show();
                 }
             }
-
             MenuItem {
                 title: "Exit";
                 activated => {
@@ -221,6 +230,14 @@ export component AppWindow inherits Window {
                         });
                     }
                 }
+            }
+        }
+        Menu {
+            title: "Help";
+
+            MenuItem {
+                title: "About";
+                activated => { about-dialog.show(); }
             }
         }
     }
