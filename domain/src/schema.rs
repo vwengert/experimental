@@ -58,8 +58,53 @@ impl Schemas {
     }
 
     pub fn load_default() -> Self {
-        let text = include_str!("./schemas.json");
-        serde_json::from_str(text).expect("Built-in schemas.json is invalid")
+        let text = include_str!("lists.schema.json");
+        let value: serde_json::Value = serde_json::from_str(text)
+            .expect("Built-in lists.schema.json is invalid JSON");
+
+        // Extract units and elements from the JSON schema structure
+        let units = value.get("properties")
+            .and_then(|p| p.get("units"))
+            .and_then(|u| u.get("default"))
+            .and_then(|d| serde_json::from_value(d.clone()).ok())
+            .unwrap_or_else(|| {
+                // Fallback to embedded defaults
+                let mut map = HashMap::new();
+                map.insert("distance".to_string(), vec!["m".to_string(), "km".to_string(), "miles".to_string()]);
+                map.insert("length".to_string(), vec!["px".to_string(), "em".to_string(), "rem".to_string(), "%".to_string()]);
+                map
+            });
+
+        let elements = value.get("properties")
+            .and_then(|p| p.get("elements"))
+            .and_then(|e| e.get("default"))
+            .and_then(|d| serde_json::from_value(d.clone()).ok())
+            .unwrap_or_else(|| {
+                // Fallback to embedded defaults
+                let mut map = HashMap::new();
+
+                let mut button_fields = HashMap::new();
+                button_fields.insert("label".to_string(), KeySpec { ty: ValueType::Str, unit: None });
+                button_fields.insert("onClick".to_string(), KeySpec { ty: ValueType::Str, unit: None });
+                button_fields.insert("disabled".to_string(), KeySpec { ty: ValueType::Bool, unit: None });
+                map.insert("Button".to_string(), ElementSchema { allow_init: true, fields: button_fields });
+
+                let mut textfield_fields = HashMap::new();
+                textfield_fields.insert("placeholder".to_string(), KeySpec { ty: ValueType::Str, unit: None });
+                textfield_fields.insert("maxLength".to_string(), KeySpec { ty: ValueType::Int, unit: None });
+                textfield_fields.insert("value".to_string(), KeySpec { ty: ValueType::Str, unit: None });
+                map.insert("TextField".to_string(), ElementSchema { allow_init: false, fields: textfield_fields });
+
+                let mut container_fields = HashMap::new();
+                container_fields.insert("width".to_string(), KeySpec { ty: ValueType::Float, unit: Some("length".to_string()) });
+                container_fields.insert("height".to_string(), KeySpec { ty: ValueType::Float, unit: Some("length".to_string()) });
+                container_fields.insert("padding".to_string(), KeySpec { ty: ValueType::Int, unit: Some("length".to_string()) });
+                map.insert("Container".to_string(), ElementSchema { allow_init: true, fields: container_fields });
+
+                map
+            });
+
+        Schemas { units, elements }
     }
 }
 

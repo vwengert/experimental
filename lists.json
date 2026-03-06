@@ -1,0 +1,77 @@
+{
+  "units": {
+    "distance": ["m", "km", "miles"],
+    "length": ["px", "em", "rem", "%"]
+  },
+  "elements": {
+    "Button": {
+      "allow_init": true,
+      "label": { "ty": "Str" },
+      "onClick": { "ty": "Str" },
+      "disabled": { "ty": "Bool" }
+    },
+    "TextField": {
+      "placeholder": { "ty": "Str" },
+      "maxLength": { "ty": "Int" },
+      "value": { "ty": "Str" }
+    },
+    "Container": {
+      "allow_init": true,
+      "width": { "ty": "Float", "unit": "length" },
+      "height": { "ty": "Float", "unit": "length" },
+      "padding": { "ty": "Int", "unit": "length" }
+    }
+  },
+  "lists": [
+    {
+      "name": "own",
+      "lines": [
+        {
+          "title": "Container",
+          "sets": [
+            {
+              "key": "height",
+              "value": "1",
+              "unit": "px"
+            },
+            {
+              "key": "padding",
+              "value": "1",
+              "unit": "em"
+            },
+            {
+              "key": "width",
+              "value": "1",
+              "unit": "px"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "list 1",
+      "lines": [
+        {
+          "title": "Container",
+          "sets": [
+            {
+              "key": "height",
+              "value": "1",
+              "unit": "px"
+            },
+            {
+              "key": "padding",
+              "value": "1",
+              "unit": "px"
+            },
+            {
+              "key": "width",
+              "value": "1",
+              "unit": "px"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

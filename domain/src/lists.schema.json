@@ -1,0 +1,169 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/lists.schema.json",
+  "title": "Lists Schema",
+  "description": "Schema for validating lists with lines and key-value sets, including element and unit definitions",
+  "type": "object",
+  "required": ["lists"],
+  "properties": {
+    "lists": {
+      "type": "array",
+      "description": "Array of list objects",
+      "items": {
+        "$ref": "#/definitions/list"
+      }
+    },
+    "units": {
+      "type": "object",
+      "description": "Unit type definitions",
+      "default": {
+        "distance": ["m", "km", "miles"],
+        "length": ["px", "em", "rem", "%"]
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "elements": {
+      "type": "object",
+      "description": "Element schema definitions",
+      "default": {
+        "Button": {
+          "allow_init": true,
+          "label": { "ty": "Str" },
+          "onClick": { "ty": "Str" },
+          "disabled": { "ty": "Bool" }
+        },
+        "TextField": {
+          "placeholder": { "ty": "Str" },
+          "maxLength": { "ty": "Int" },
+          "value": { "ty": "Str" }
+        },
+        "Container": {
+          "allow_init": true,
+          "width": { "ty": "Float", "unit": "length" },
+          "height": { "ty": "Float", "unit": "length" },
+          "padding": { "ty": "Int", "unit": "length" }
+        }
+      },
+      "additionalProperties": {
+        "type": "object"
+      }
+    }
+  },
+  "definitions": {
+    "list": {
+      "type": "object",
+      "required": ["name", "lines"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the list"
+        },
+        "lines": {
+          "type": "array",
+          "description": "Array of line objects",
+          "items": {
+            "$ref": "#/definitions/line"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "line": {
+      "type": "object",
+      "required": ["title", "sets"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Title of the line"
+        },
+        "sets": {
+          "type": "array",
+          "description": "Array of key-value-unit sets",
+          "items": {
+            "$ref": "#/definitions/set"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "set": {
+      "type": "object",
+      "required": ["key", "value", "unit"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "The key/property name"
+        },
+        "value": {
+          "type": "string",
+          "description": "The value as string"
+        },
+        "unit": {
+          "type": "string",
+          "description": "The unit of measurement"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "key": {
+                "enum": ["width", "height"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "unit": {
+                "enum": ["px", "em", "rem", "%"],
+                "description": "Length units for width/height"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "key": {
+                "const": "padding"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "unit": {
+                "enum": ["px", "em", "rem", "%"],
+                "description": "Length units for padding"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "key": {
+                "enum": ["distance", "range"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "unit": {
+                "enum": ["m", "km", "miles"],
+                "description": "Distance units"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
+

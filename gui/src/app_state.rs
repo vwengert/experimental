@@ -305,14 +305,19 @@ impl AppState {
                     .map(|p| ItemSet {
                         key: p.key.to_string(),
                         value: p.value.to_string(),
-                        unit: if p.unit.is_empty() { None } else { Some(p.unit.to_string()) },
+                        unit: p.unit.to_string(),
                     })
                     .collect();
                 item_lines.push(ItemLine { title, sets: item_sets });
             }
             item_lists.push(ItemList { name, lines: item_lines });
         }
-        let data = ItemData { lists: item_lists };
+
+        let data = ItemData {
+            units: self.schemas.units.clone(),
+            elements: self.schemas.elements.clone(),
+            lists: item_lists
+        };
         let _ = domain::io::save(path, &data);
 
         if let Some(app) = self.app_weak.upgrade() {
@@ -325,9 +330,16 @@ impl AppState {
         if path.is_empty() {
             return;
         }
-        let item_data: ItemData = match domain::io::load(path) {
+        let item_data: ItemData = match domain::io::load_validated(path) {
             Ok(d) => d,
-            Err(_) => return,
+            Err(e) => {
+                eprintln!("Failed to load list: {}", e);
+                if let Some(app) = self.app_weak.upgrade() {
+                    // You could set an error message in the UI here
+                    app.set_validation_error_epoch(app.get_validation_error_epoch() + 1);
+                }
+                return;
+            }
         };
         if item_data.lists.is_empty() {
             return;
@@ -357,7 +369,7 @@ impl AppState {
                         KeyData {
                             key: SharedString::from(p.key.as_str()),
                             value: SharedString::from(p.value.as_str()),
-                            unit: SharedString::from(p.unit.as_deref().unwrap_or("")),
+                            unit: SharedString::from(p.unit.as_str()),
                             unit_options,
                             is_valid: true,
                         }
