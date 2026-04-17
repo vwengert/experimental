@@ -3,12 +3,12 @@ use std::rc::Rc;
 
 use slint::{ModelRc, SharedString, VecModel};
 
-use domain::schema::{ElementSchema, KeySpec, ValueType};
+use domain::schema::{ElementSchema, FieldSpec, ValueType};
 
 use crate::{FileEntry, KeyData};
 
 pub fn build_unit_options(
-    spec: &KeySpec,
+    spec: &FieldSpec,
     units: &HashMap<String, Vec<String>>,
 ) -> ModelRc<SharedString> {
     match &spec.unit {
@@ -23,7 +23,7 @@ pub fn build_unit_options(
     }
 }
 
-pub fn make_key_data(key: &str, spec: &KeySpec, units: &HashMap<String, Vec<String>>) -> KeyData {
+pub fn make_key_data(key: &str, spec: &FieldSpec, units: &HashMap<String, Vec<String>>) -> KeyData {
     let unit_options = build_unit_options(spec, units);
     let unit = match &spec.unit {
         None => SharedString::new(),
@@ -40,10 +40,10 @@ pub fn build_key_data_for_schema(
     schema: &ElementSchema,
     units: &HashMap<String, Vec<String>>,
 ) -> Vec<KeyData> {
-    let mut key_data: Vec<KeyData> =
-        schema.fields.iter().map(|(k, spec)| make_key_data(k.as_str(), spec, units)).collect();
-    key_data.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
-    key_data
+    schema
+        .iter_fields()
+        .map(|(name, spec)| make_key_data(name, spec, units))
+        .collect()
 }
 
 pub fn read_dir_entries(path: &std::path::Path) -> Vec<FileEntry> {

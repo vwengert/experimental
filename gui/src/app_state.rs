@@ -25,6 +25,24 @@ pub struct AppState {
 // ── AppState implementation ───────────────────────────────────────────────────
 
 impl AppState {
+    fn ordered_sets_for_schema<'a>(
+        schema: Option<&'a domain::schema::ElementSchema>,
+        sets: &'a [ItemSet],
+    ) -> Vec<&'a ItemSet> {
+        let Some(schema) = schema else {
+            return sets.iter().collect();
+        };
+
+        let mut ordered_sets = Vec::with_capacity(sets.len());
+        for field in schema.fields() {
+            if let Some(item_set) = sets.iter().find(|set| set.key == field.name) {
+                ordered_sets.push(item_set);
+            }
+        }
+        ordered_sets.extend(sets.iter().filter(|set| !schema.contains_field(&set.key)));
+        ordered_sets
+    }
+
     /// Sets the active list index and updates the UI lines model accordingly.
     pub fn set_lines_model(&self, idx: usize) {
         *self.active_list_idx.borrow_mut() = idx;
@@ -63,7 +81,7 @@ impl AppState {
                         for pi in 0..key_data_model.row_count() {
                             if let Some(mut key_data) = key_data_model.row_data(pi) {
                                 let is_valid = schema
-                                    .and_then(|s| s.fields.get(key_data.key.as_str()))
+                                    .and_then(|s| s.field(key_data.key.as_str()))
                                     .map(|spec| {
                                         validate_value_str(key_data.value.as_str(), spec.ty)
                                     })
@@ -151,7 +169,7 @@ impl AppState {
                 let new_valid = lines_model
                     .row_data(li)
                     .and_then(|line| self.schemas.schema_for(line.title.as_str()))
-                    .and_then(|schema| schema.fields.get(key_data.key.as_str()))
+                    .and_then(|schema| schema.field(key_data.key.as_str()))
                     .map(|spec| validate_value_str(action.new_value.as_str(), spec.ty))
                     .unwrap_or(!action.new_value.is_empty());
                 key_data.value = action.new_value.clone();
@@ -314,8 +332,6 @@ impl AppState {
         }
 
         let data = ItemData {
-            units: self.schemas.units.clone(),
-            elements: self.schemas.elements.clone(),
             lists: item_lists
         };
         let _ = domain::io::save(path, &data);
@@ -354,14 +370,14 @@ impl AppState {
                 Rc::new(RefCell::new(Vec::new()));
 
             for item_line in &item_list.lines {
-                let key_data: Vec<KeyData> = item_line
-                    .sets
-                    .iter()
+                let schema = self.schemas.schema_for(&item_line.title);
+                let key_data: Vec<KeyData> = Self::ordered_sets_for_schema(schema, &item_line.sets)
+                    .into_iter()
                     .map(|p| {
                         let unit_options = self
                             .schemas
                             .schema_for(&item_line.title)
-                            .and_then(|schema| schema.fields.get(&p.key))
+                            .and_then(|schema| schema.field(&p.key))
                             .map(|key_spec| build_unit_options(key_spec, &self.schemas.units))
                             .unwrap_or_else(|| {
                                 ModelRc::from(Rc::new(VecModel::<SharedString>::default()))

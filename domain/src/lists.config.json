@@ -1,0 +1,92 @@
+{
+  "title": "Lists Config",
+  "description": "Default configuration for lists with line/key-value definitions, including element and unit definitions",
+  "properties": {
+    "units": {
+      "distance": [
+        "m",
+        "km",
+        "miles"
+      ],
+      "length": [
+        "px",
+        "em",
+        "rem",
+        "%"
+      ]
+    },
+    "elements": {
+      "Button": {
+        "allow_init": true,
+        "fields": [
+          {
+            "name": "label",
+            "spec": {
+              "ty": "Str"
+            }
+          },
+          {
+            "name": "onClick",
+            "spec": {
+              "ty": "Str"
+            }
+          },
+          {
+            "name": "disabled",
+            "spec": {
+              "ty": "Bool"
+            }
+          }
+        ]
+      },
+      "TextField": {
+        "fields": [
+          {
+            "name": "placeholder",
+            "spec": {
+              "ty": "Str"
+            }
+          },
+          {
+            "name": "maxLength",
+            "spec": {
+              "ty": "Int"
+            }
+          },
+          {
+            "name": "value",
+            "spec": {
+              "ty": "Str"
+            }
+          }
+        ]
+      },
+      "Container": {
+        "allow_init": true,
+        "fields": [
+          {
+            "name": "width",
+            "spec": {
+              "ty": "Float",
+              "unit": "length"
+            }
+          },
+          {
+            "name": "height",
+            "spec": {
+              "ty": "Float",
+              "unit": "length"
+            }
+          },
+          {
+            "name": "padding",
+            "spec": {
+              "ty": "Int",
+              "unit": "length"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,13 +1,7 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Element {
-    pub name: String,
-    pub params: HashMap<String, serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub enum ValueType {
     Str,
     Int,
@@ -15,26 +9,69 @@ pub enum ValueType {
     Bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KeySpec {
+#[derive(Debug, Clone, Deserialize)]
+pub struct FieldSpec {
     pub ty: ValueType,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub unit: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ElementSchema {
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub allow_init: bool,
-    #[serde(flatten)]
-    pub fields: HashMap<String, KeySpec>,
+#[derive(Debug, Clone, Deserialize)]
+pub struct ElementField {
+    pub name: String,
+    pub spec: FieldSpec,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl ElementField {
+    pub fn new(name: impl Into<String>, spec: FieldSpec) -> Self {
+        Self { name: name.into(), spec }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ElementSchema {
+    #[serde(default)]
+    pub allow_init: bool,
+    #[serde(default)]
+    fields: Vec<ElementField>,
+}
+
+impl ElementSchema {
+    pub fn new(allow_init: bool, fields: Vec<ElementField>) -> Self {
+        Self { allow_init, fields }
+    }
+
+    pub fn field(&self, name: &str) -> Option<&FieldSpec> {
+        self.fields
+            .iter()
+            .find(|field| field.name == name)
+            .map(|field| &field.spec)
+    }
+
+    pub fn fields(&self) -> &[ElementField] {
+        &self.fields
+    }
+
+    pub fn iter_fields(&self) -> impl Iterator<Item = (&str, &FieldSpec)> {
+        self.fields.iter().map(|field| (field.name.as_str(), &field.spec))
+    }
+
+    pub fn contains_field(&self, name: &str) -> bool {
+        self.field(name).is_some()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct Schemas {
     pub units: HashMap<String, Vec<String>>,
     pub elements: HashMap<String, ElementSchema>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ListsConfig {
+    pub title: String,
+    pub description: String,
+    pub properties: Schemas,
 }
 
 impl Schemas {
@@ -42,159 +79,23 @@ impl Schemas {
         self.elements.get(element_name)
     }
 
-    pub fn units_for(&self, unit_type: &str) -> Option<&Vec<String>> {
-        self.units.get(unit_type)
-    }
 
     pub fn init_element_names(&self) -> Vec<&str> {
-        let mut names: Vec<&str> = self
+        let names: Vec<&str> = self
             .elements
             .iter()
             .filter(|(_, schema)| schema.allow_init)
             .map(|(name, _)| name.as_str())
             .collect();
-        names.sort();
         names
     }
 
     pub fn load_default() -> Self {
-        let text = include_str!("lists.schema.json");
-        let value: serde_json::Value = serde_json::from_str(text)
-            .expect("Built-in lists.schema.json is invalid JSON");
-
-        // Extract units and elements from the JSON schema structure
-        let units = value.get("properties")
-            .and_then(|p| p.get("units"))
-            .and_then(|u| u.get("default"))
-            .and_then(|d| serde_json::from_value(d.clone()).ok())
-            .unwrap_or_else(|| {
-                // Fallback to embedded defaults
-                let mut map = HashMap::new();
-                map.insert("distance".to_string(), vec!["m".to_string(), "km".to_string(), "miles".to_string()]);
-                map.insert("length".to_string(), vec!["px".to_string(), "em".to_string(), "rem".to_string(), "%".to_string()]);
-                map
-            });
-
-        let elements = value.get("properties")
-            .and_then(|p| p.get("elements"))
-            .and_then(|e| e.get("default"))
-            .and_then(|d| serde_json::from_value(d.clone()).ok())
-            .unwrap_or_else(|| {
-                // Fallback to embedded defaults
-                let mut map = HashMap::new();
-
-                let mut button_fields = HashMap::new();
-                button_fields.insert("label".to_string(), KeySpec { ty: ValueType::Str, unit: None });
-                button_fields.insert("onClick".to_string(), KeySpec { ty: ValueType::Str, unit: None });
-                button_fields.insert("disabled".to_string(), KeySpec { ty: ValueType::Bool, unit: None });
-                map.insert("Button".to_string(), ElementSchema { allow_init: true, fields: button_fields });
-
-                let mut textfield_fields = HashMap::new();
-                textfield_fields.insert("placeholder".to_string(), KeySpec { ty: ValueType::Str, unit: None });
-                textfield_fields.insert("maxLength".to_string(), KeySpec { ty: ValueType::Int, unit: None });
-                textfield_fields.insert("value".to_string(), KeySpec { ty: ValueType::Str, unit: None });
-                map.insert("TextField".to_string(), ElementSchema { allow_init: false, fields: textfield_fields });
-
-                let mut container_fields = HashMap::new();
-                container_fields.insert("width".to_string(), KeySpec { ty: ValueType::Float, unit: Some("length".to_string()) });
-                container_fields.insert("height".to_string(), KeySpec { ty: ValueType::Float, unit: Some("length".to_string()) });
-                container_fields.insert("padding".to_string(), KeySpec { ty: ValueType::Int, unit: Some("length".to_string()) });
-                map.insert("Container".to_string(), ElementSchema { allow_init: true, fields: container_fields });
-
-                map
-            });
-
-        Schemas { units, elements }
+        let text = include_str!("lists.config.json");
+        let config: ListsConfig = serde_json::from_str(text)
+            .expect("Built-in lists.config.json is invalid JSON");
+        config.properties
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValidationError {
-    pub key: Option<String>,
-    pub message: String,
-}
-
-pub fn validate_element(
-    schemas: &Schemas,
-    element: &Element,
-) -> Result<(), Vec<ValidationError>> {
-    let element_schema = match validate_element_name(schemas, &element.name) {
-        Ok(schema) => schema,
-        Err(error) => return Err(vec![error]),
-    };
-
-    let mut errors = Vec::<ValidationError>::new();
-    validate_keys_names(element_schema, element, &mut errors);
-    validate_values(element_schema, element, &mut errors);
-
-    if errors.is_empty() { Ok(()) } else { Err(errors) }
-}
-
-pub fn validate_element_name<'a>(
-    schemas: &'a Schemas,
-    element_name: &str,
-) -> Result<&'a ElementSchema, ValidationError> {
-    match schemas.schema_for(element_name) {
-        Some(schema) => Ok(schema),
-        None => Err(ValidationError {
-            key: None,
-            message: format!("Unknown element name '{}'", element_name),
-        }),
-    }
-}
-
-pub fn validate_keys_names(
-    element_schema: &ElementSchema,
-    element: &Element,
-    errors: &mut Vec<ValidationError>,
-) {
-    for key in element.params.keys() {
-        if !element_schema.fields.contains_key(key) {
-            errors.push(ValidationError {
-                key: Some(key.clone()),
-                message: "Key not allowed for this element type".into(),
-            });
-        }
-    }
-
-    for key in element_schema.fields.keys() {
-        if !element.params.contains_key(key) {
-            errors.push(ValidationError {
-                key: Some(key.clone()),
-                message: "Missing required key".into(),
-            });
-        }
-    }
-}
-
-pub fn validate_values(
-    element_schema: &ElementSchema,
-    element: &Element,
-    errors: &mut Vec<ValidationError>,
-) {
-    for (key, key_spec) in &element_schema.fields {
-        let Some(value) = element.params.get(key) else { continue };
-
-        if !json_value_matches_type(value, key_spec.ty) {
-            errors.push(ValidationError {
-                key: Some(key.clone()),
-                message: format!("Wrong type (expected {:?})", key_spec.ty),
-            });
-        }
-    }
-}
-
-pub fn json_value_matches_type(value: &serde_json::Value, expected: ValueType) -> bool {
-    match expected {
-        ValueType::Str => value.is_string(),
-        ValueType::Bool => value.is_boolean(),
-        ValueType::Int => value.as_i64().is_some(),
-        ValueType::Float => value.is_number(),
-    }
-}
-
-fn is_false(v: &bool) -> bool {
-    !v
 }
 
 #[cfg(test)]
@@ -208,7 +109,11 @@ mod tests {
         // Button and Container should have allow_init = true
         let button = schemas.schema_for("Button").unwrap();
         assert!(button.allow_init, "Button should have allow_init = true");
-        assert!(button.fields.contains_key("label"), "Button should have 'label' field");
+        assert!(button.contains_field("label"), "Button should have 'label' field");
+        assert_eq!(
+            button.iter_fields().map(|(name, _)| name).collect::<Vec<_>>(),
+            vec!["label", "onClick", "disabled"]
+        );
 
         let container = schemas.schema_for("Container").unwrap();
         assert!(container.allow_init, "Container should have allow_init = true");
@@ -223,4 +128,42 @@ mod tests {
         assert!(init_names.contains(&"Container"));
         assert!(!init_names.contains(&"TextField"));
     }
+
+    #[test]
+    fn test_lists_config_deserializes() {
+        let text = include_str!("lists.config.json");
+        let config: ListsConfig = serde_json::from_str(text).unwrap();
+
+        assert_eq!(config.title, "Lists Config");
+        assert!(config.description.contains("Default configuration"));
+        assert!(config.properties.units.contains_key("length"));
+        assert!(config.properties.elements.contains_key("Button"));
+    }
+
+    #[test]
+    fn test_element_schema_rejects_legacy_flat_fields() {
+        let json = r#"{
+            "allow_init": true,
+            "height": { "ty": "Float", "unit": "length" },
+            "padding": { "ty": "Int", "unit": "length" },
+            "width": { "ty": "Float", "unit": "length" }
+        }"#;
+
+        assert!(serde_json::from_str::<ElementSchema>(json).is_err());
+    }
+
+    #[test]
+    fn test_element_schema_reads_field_list_and_serializes_as_list() {
+        let json = r#"{
+            "fields": [
+                { "name": "label", "spec": { "ty": "Str" } },
+                { "name": "disabled", "spec": { "ty": "Bool" } }
+            ]
+        }"#;
+
+        let schema: ElementSchema = serde_json::from_str(json).unwrap();
+        assert_eq!(schema.fields().len(), 2);
+        assert_eq!(schema.fields()[0].name, "label");
+    }
 }
+
