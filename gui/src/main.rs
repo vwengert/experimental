@@ -18,13 +18,11 @@ fn main() {
     let app = AppWindow::new().unwrap();
     app.set_file_browser_file_name("lists.json".into());
 
-    // Initialise the file browser to the current working directory
     let cwd = std::env::current_dir().unwrap_or_default();
     app.set_file_browser_dir(SharedString::from(cwd.to_string_lossy().as_ref()));
     let initial_entries = read_dir_entries(&cwd);
     app.set_file_browser_entries(ModelRc::from(Rc::new(VecModel::from(initial_entries))));
 
-    // Populate schema names (sorted for deterministic ordering)
     let mut schema_names: Vec<SharedString> = schemas
         .elements
         .keys()
@@ -33,7 +31,6 @@ fn main() {
     schema_names.sort();
     app.set_schema_names(ModelRc::from(Rc::new(VecModel::from(schema_names))));
 
-    // Populate init schema names (only elements allowed as first/init entry)
     let init_schema_names: Vec<SharedString> = schemas
         .init_element_names()
         .iter()
@@ -41,17 +38,14 @@ fn main() {
         .collect();
     app.set_init_schema_names(ModelRc::from(Rc::new(VecModel::from(init_schema_names))));
 
-    // Populate list names: start with just "own"
     let list_names_model: Rc<VecModel<SharedString>> =
         Rc::new(VecModel::from(vec![SharedString::from("own")]));
     app.set_list_names(ModelRc::from(list_names_model.clone()));
 
-    // Create one LineItem model per list
     let list_models: Rc<RefCell<Vec<Rc<VecModel<LineItem>>>>> = Rc::new(RefCell::new(
         (0..LIST_COUNT).map(|_| Rc::new(VecModel::<LineItem>::default())).collect(),
     ));
 
-    // Create one KeyData-models Vec per list
     let all_key_data_models: Rc<RefCell<Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>>>> =
         Rc::new(RefCell::new(
             (0..LIST_COUNT)
@@ -59,10 +53,8 @@ fn main() {
                 .collect(),
         ));
 
-    // Track active list index
     let active_list_idx: Rc<RefCell<usize>> = Rc::new(RefCell::new(0));
 
-    // Bind the first list model to the UI
     app.set_lines(ModelRc::from(list_models.borrow()[0].clone()));
 
     let state = Rc::new(AppState {
@@ -74,9 +66,19 @@ fn main() {
         app_weak: app.as_weak(),
     });
 
-    // Single dispatch callback that handles all actions
     app.on_dispatch(move |action| {
         state.handle_dispatch(action);
+    });
+
+    app.on_openDataView(|| {
+        let dialog = DataView::new().unwrap();
+        dialog.show().unwrap();
+        let dialog_weak = dialog.as_weak();
+        dialog.on_closeDataView(move || {
+            if let Some(dialog) = dialog_weak.upgrade() {
+                dialog.hide().unwrap();
+            }
+        })
     });
 
     app.run().unwrap();

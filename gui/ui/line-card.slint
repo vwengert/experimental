@@ -45,7 +45,7 @@ component LineRow {
 
         // Red cross shown while the value is invalid
         if !key-data.is-valid: Text {
-            text: "✗";
+            text: "x";
             color: red;
             font-size: 16px;
             vertical-alignment: center;
@@ -112,7 +112,7 @@ export component LineCard inherits Rectangle {
             }
 
             if root.line-index != 0: Button {
-                text: "✕";
+                text: "x";
                 clicked => {
                     root.dispatch({
                         action-type: ActionType.remove-line,

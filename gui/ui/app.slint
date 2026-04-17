@@ -1,7 +1,21 @@
-import { AboutSlint, Button, ComboBox, Palette, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { AboutSlint, Button, ComboBox, Palette, ScrollView, VerticalBox, HorizontalBox, StandardButton } from "std-widgets.slint";
 import { LineItem, ActionType, Action, FileEntry } from "structs.slint";
 import { FileDialog } from "file-dialog.slint";
 import { LineCard } from "line-card.slint";
+
+export component DataView inherits Dialog {
+    title: "Kalkulierte Daten";
+    callback closeDataView();
+    
+    StandardButton {
+        kind: close;
+        clicked => { root.closeDataView(); }
+    }
+
+
+    AboutSlint {}
+}
+
 
 export component AppWindow inherits Window {
     title: "Schema Elements Editor";
@@ -34,6 +48,7 @@ export component AppWindow inherits Window {
     private property <bool> file-dialog-is-save: true;
 
     callback dispatch(Action);
+    callback openDataView();
 
     // File path popup
     file-dialog := FileDialog {
@@ -237,12 +252,48 @@ export component AppWindow inherits Window {
 
             MenuItem {
                 title: "About";
-                activated => { about-dialog.show(); }
+                activated => {
+                    root.openDataView();
+                }
             }
         }
     }
 
     VerticalBox {
+
+        HorizontalLayout {
+            alignment: start;
+            padding: 4px;
+            spacing: 8px;
+            Button {
+                text: "+ Add List";
+                width: 100px;
+                height: 30px;
+                clicked => {
+                    root.dispatch({
+                    action-type: ActionType.add-list,
+                    schema-name: "",
+                    line-index: 0,
+                    key-data-index: 0,
+                    new-value: "",
+                    });
+                }
+            }
+            // Delete-list toolbar (only visible when a non-first tab is active)
+            if root.active-list-index > 0: Button {
+                text: "Delete List";
+                clicked => {
+                    root.dispatch({
+                    action-type: ActionType.remove-list,
+                    schema-name: "",
+                    line-index: root.active-list-index,
+                    key-data-index: 0,
+                    new-value: "",
+                    });
+                }
+            }
+        }
+
         // Tab bar wrapped in a horizontal ScrollView so it scrolls when tabs overflow
         ScrollView {
             height: 42px;
@@ -281,38 +332,6 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                Button {
-                    text: "+ Add List";
-                    clicked => {
-                        root.dispatch({
-                            action-type: ActionType.add-list,
-                            schema-name: "",
-                            line-index: 0,
-                            key-data-index: 0,
-                            new-value: "",
-                        });
-                    }
-                }
-            }
-        }
-
-        // Delete-list toolbar (only visible when a non-first tab is active)
-        if root.active-list-index > 0: HorizontalBox {
-            alignment: start;
-            padding: 4px;
-            spacing: 8px;
-
-            Button {
-                text: "Delete List";
-                clicked => {
-                    root.dispatch({
-                        action-type: ActionType.remove-list,
-                        schema-name: "",
-                        line-index: root.active-list-index,
-                        key-data-index: 0,
-                        new-value: "",
-                    });
-                }
             }
         }
 

@@ -1,6 +1,40 @@
 import { Button, LineEdit, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
 import { FileEntry } from "structs.slint";
 
+component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    callback clicked();
+
+    border-width: 1px;
+    border-color: #999;
+    border-radius: 4px;
+    background: ta.pressed ? #dcdcdc : (ta.has-hover ? #efefef : #f7f7f7);
+
+    content := VerticalLayout {
+        spacing: 2px;
+        alignment: center;
+
+        HorizontalLayout {
+            spacing: 2px;
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                width: 16px;
+                height: 16px;
+            }
+
+            Text {
+                text: root.label;
+            }
+        }
+    }
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
 export component FileDialog inherits PopupWindow {
     width: 600px;
     height: 460px;
@@ -34,8 +68,11 @@ export component FileDialog inherits PopupWindow {
             HorizontalBox {
                 spacing: 6px;
 
-                Button {
-                    text: "↑ Up";
+                IconButton {
+                    icon: @image-url("assets/icons/up-arrow.png");
+                    label: "Up";
+                    height: 28px;
+                    width: 60px;
                     clicked => {
                         root.navigate(root.current-dir + "/..");
                     }
@@ -91,9 +128,10 @@ export component FileDialog inherits PopupWindow {
                                 spacing: 6px;
                                 alignment: start;
 
-                                Text {
-                                    text: entry.is-dir ? "📁" : "📄";
-                                    vertical-alignment: center;
+                                Image {
+                                    source: entry.is-dir ? @image-url("assets/icons/folder.png") : @image-url("assets/icons/document.png");
+                                    width: 16px;
+                                    height: 16px;
                                 }
 
                                 Text {
