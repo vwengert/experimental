@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "zerotaskx.rust-extension-pack",
+    "slint.slint",
+    "davidanson.vscode-markdownlint",
+    "ms-vscode.test-adapter-converter",
+    "hbenl.vscode-test-explorer",
+    "esbenp.prettier-vscode"
+  ]
+}
+

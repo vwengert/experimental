@@ -1,0 +1,28 @@
+{
+  "[rust]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.rulers": [100, 120]
+  },
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit",
+    "source.organizeImports": "explicit"
+  },
+  "rust-analyzer.inlayHints.enabled": true,
+  "rust-analyzer.inlayHints.typeHints.enabled": true,
+  "rust-analyzer.inlayHints.chainingHints.enabled": true,
+  "rust-analyzer.inlayHints.lifetimeElisionHints.enable": "always",
+  "rust-analyzer.runnables.command": "cargo",
+  "rust-analyzer.lens.enable": true,
+  "extensions.ignoreRecommendations": false,
+  "files.exclude": {
+    "**/target": true,
+    "**/.git": true
+  },
+  "search.exclude": {
+    "**/target": true,
+    "**/.git": true
+  },
+  "slint.preview.providedByEditor": true
+}

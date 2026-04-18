@@ -1,0 +1,55 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug GUI",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": [
+          "build",
+          "-p",
+          "gui",
+          "--bin",
+          "gui"
+        ],
+        "filter": {
+          "name": "gui",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "sourceLanguages": ["rust"],
+      "stopOnEntry": false,
+      "console": "integratedTerminal",
+      "env": {
+        "DISPLAY": "${env:DISPLAY}"
+      }
+    },
+    {
+      "name": "Debug CLI",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": [
+          "build",
+          "-p",
+          "cli",
+          "--bin",
+          "cli"
+        ],
+        "filter": {
+          "name": "cli",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "sourceLanguages": ["rust"],
+      "stopOnEntry": false,
+      "console": "integratedTerminal"
+    }
+  ]
+}
+

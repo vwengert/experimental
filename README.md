@@ -1,8 +1,57 @@
-# Build, Test, and Run (Fedora)
+# Build, Test, and Run
 
-## 1) Install prerequisites
+## Setup path
+
+Use exactly one setup path:
+
+- **Option A (preferred): Dev Container** - better isolation/security and reproducible environment
+- **Option B: Local Fedora install** - only if you cannot use the Dev Container
+
+> If you use Option A, skip all local system package installation steps.
+
+## Option A (preferred): Dev Container
+
+This repository includes a ready-to-use dev container in:
+
+- `.devcontainer/devcontainer.json`
+- `.devcontainer/Dockerfile`
+
+### Open in container
+
+In VS Code:
+
+1. Install the **Dev Containers** extension.
+2. Open this repository.
+3. Run **Dev Containers: Reopen in Container**.
+
+### First-time host setup for GUI apps (Linux/Fedora)
+
+To allow GUI windows from inside the container to open on your host session:
+
+```bash
+xhost +local:docker
+```
+
+Then, inside the container, run:
+
+```bash
+cargo run -p gui
+```
+
+Optionally revoke access afterwards:
+
+```bash
+xhost -local:docker
+```
+
+For more details, see `.devcontainer/README.md`.
+
+## Option B: Local Fedora setup (fallback)
+
+Use this only if you are not using the Dev Container.
 
 ### System packages
+
 Install common Rust + native build dependencies used by this workspace and the GUI stack:
 
 ```bash
@@ -10,18 +59,14 @@ sudo dnf install -y \
   gcc gcc-c++ clang make cmake \
   pkgconf-pkg-config \
   fontconfig-devel \
+  qt6-qtbase-devel \
   libxkbcommon-devel wayland-devel \
   mesa-libEGL-devel mesa-libGL-devel \
   libX11-devel libXcursor-devel libXi-devel libXrandr-devel libXrender-devel libxcb-devel
 ```
 
-If you want to use a Qt backend for Slint (optional), also install:
-
-```bash
-sudo dnf install -y qt6-qtbase-devel
-```
-
 ### Rust toolchain
+
 Install Rust with `rustup` (if not installed yet):
 
 ```bash
@@ -32,12 +77,11 @@ rustup toolchain install stable
 rustup default stable
 ```
 
-## 2) Build
+## Build
 
 From the repository root:
 
 ```bash
-cd /home/vwengert/Repos/experimental
 cargo check
 cargo build
 ```
@@ -50,7 +94,7 @@ cargo build -p cli
 cargo build -p gui
 ```
 
-## 3) Test
+## Test
 
 Run all tests in the workspace:
 
@@ -66,7 +110,7 @@ cargo test -p cli
 cargo test -p gui
 ```
 
-## 4) Run
+## Run
 
 Run the GUI app:
 
@@ -80,7 +124,7 @@ Run the CLI app:
 cargo run -p cli
 ```
 
-## 5) `lists.config.json` format
+## `lists.config.json` format
 
 The default built-in configuration is embedded from:
 

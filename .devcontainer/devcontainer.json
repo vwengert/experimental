@@ -1,0 +1,30 @@
+{
+  "name": "experimental-rust",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": false,
+  "containerEnv": {
+    "DISPLAY": "${localEnv:DISPLAY}"
+  },
+  "workspaceFolder": "/workspaces/experimental",
+  "runArgs": [
+    "--userns=keep-id:uid=1000,gid=1000",
+    "--security-opt=label=disable",
+    "--volume=/tmp/.X11-unix:/tmp/.X11-unix:rw"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "zerotaskx.rust-extension-pack",
+        "slint.slint",
+        "davidanson.vscode-markdownlint",
+        "ms-vscode.test-adapter-converter",
+        "hbenl.vscode-test-explorer",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}
