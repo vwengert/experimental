@@ -1,4 +1,4 @@
-use domain::schema::Schemas;
+use domain::models::elements::Schemas;
 use slint::{ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;

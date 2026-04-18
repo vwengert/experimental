@@ -10,7 +10,7 @@ pub struct ItemSet {
 #[derive(Serialize, Deserialize)]
 pub struct ItemLine {
     pub title: String,
-    pub sets: Vec<ItemSet>,
+    pub data: Vec<ItemSet>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -23,3 +23,4 @@ pub struct ItemList {
 pub struct ItemData {
     pub lists: Vec<ItemList>,
 }
+

@@ -1,7 +1,9 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+use crate::dto::lists_config::ListsConfigDto;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ValueType {
     Str,
     Int,
@@ -29,6 +31,7 @@ impl ElementField {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ElementSchema {
     #[serde(default)]
     pub allow_init: bool,
@@ -67,13 +70,6 @@ pub struct Schemas {
     pub elements: HashMap<String, ElementSchema>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct ListsConfig {
-    pub title: String,
-    pub description: String,
-    pub properties: Schemas,
-}
-
 impl Schemas {
     pub fn schema_for(&self, element_name: &str) -> Option<&ElementSchema> {
         self.elements.get(element_name)
@@ -91,10 +87,10 @@ impl Schemas {
     }
 
     pub fn load_default() -> Self {
-        let text = include_str!("lists.config.json");
-        let config: ListsConfig = serde_json::from_str(text)
+        let text = include_str!("../../assets/lists.config.json");
+        let config: ListsConfigDto = serde_json::from_str(text)
             .expect("Built-in lists.config.json is invalid JSON");
-        config.properties
+        config.properties.into()
     }
 }
 
@@ -131,13 +127,15 @@ mod tests {
 
     #[test]
     fn test_lists_config_deserializes() {
-        let text = include_str!("lists.config.json");
-        let config: ListsConfig = serde_json::from_str(text).unwrap();
+        let text = include_str!("../../assets/lists.config.json");
+        let config: ListsConfigDto = serde_json::from_str(text).unwrap();
 
         assert_eq!(config.title, "Lists Config");
         assert!(config.description.contains("Default configuration"));
-        assert!(config.properties.units.contains_key("length"));
-        assert!(config.properties.elements.contains_key("Button"));
+
+        let schemas: Schemas = config.properties.into();
+        assert!(schemas.units.contains_key("length"));
+        assert!(schemas.elements.contains_key("Button"));
     }
 
     #[test]
@@ -166,4 +164,5 @@ mod tests {
         assert_eq!(schema.fields()[0].name, "label");
     }
 }
+
 

@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
-use domain::domain::{ItemData, ItemLine, ItemList, ItemSet};
-use domain::schema::Schemas;
+use domain::models::model::{ItemData, ItemLine, ItemList, ItemSet};
+use domain::models::elements::Schemas;
 
 use crate::util::{build_key_data_for_schema, build_unit_options, read_dir_entries, validate_value_str};
 use crate::{Action, ActionType, AppWindow, KeyData, LineItem};
@@ -26,20 +26,20 @@ pub struct AppState {
 
 impl AppState {
     fn ordered_sets_for_schema<'a>(
-        schema: Option<&'a domain::schema::ElementSchema>,
-        sets: &'a [ItemSet],
+        schema: Option<&'a domain::models::elements::ElementSchema>,
+        data: &'a [ItemSet],
     ) -> Vec<&'a ItemSet> {
         let Some(schema) = schema else {
-            return sets.iter().collect();
+            return data.iter().collect();
         };
 
-        let mut ordered_sets = Vec::with_capacity(sets.len());
+        let mut ordered_sets = Vec::with_capacity(data.len());
         for field in schema.fields() {
-            if let Some(item_set) = sets.iter().find(|set| set.key == field.name) {
+            if let Some(item_set) = data.iter().find(|set| set.key == field.name) {
                 ordered_sets.push(item_set);
             }
         }
-        ordered_sets.extend(sets.iter().filter(|set| !schema.contains_field(&set.key)));
+        ordered_sets.extend(data.iter().filter(|set| !schema.contains_field(&set.key)));
         ordered_sets
     }
 
@@ -326,7 +326,7 @@ impl AppState {
                         unit: p.unit.to_string(),
                     })
                     .collect();
-                item_lines.push(ItemLine { title, sets: item_sets });
+                item_lines.push(ItemLine { title, data: item_sets });
             }
             item_lists.push(ItemList { name, lines: item_lines });
         }
@@ -334,7 +334,7 @@ impl AppState {
         let data = ItemData {
             lists: item_lists
         };
-        let _ = domain::io::save(path, &data);
+        let _ = domain::utility::persistence::save(path, &data);
 
         if let Some(app) = self.app_weak.upgrade() {
             app.set_is_dirty(false);
@@ -346,7 +346,7 @@ impl AppState {
         if path.is_empty() {
             return;
         }
-        let item_data: ItemData = match domain::io::load_validated(path) {
+        let item_data: ItemData = match domain::utility::persistence::load_validated(path) {
             Ok(d) => d,
             Err(e) => {
                 eprintln!("Failed to load list: {}", e);
@@ -371,7 +371,7 @@ impl AppState {
 
             for item_line in &item_list.lines {
                 let schema = self.schemas.schema_for(&item_line.title);
-                let key_data: Vec<KeyData> = Self::ordered_sets_for_schema(schema, &item_line.sets)
+                let key_data: Vec<KeyData> = Self::ordered_sets_for_schema(schema, &item_line.data)
                     .into_iter()
                     .map(|p| {
                         let unit_options = self

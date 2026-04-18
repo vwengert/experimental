@@ -1,3 +1,3 @@
-pub mod domain;
-pub mod io;
-pub mod schema;
+pub mod dto;
+pub mod models;
+pub mod utility;

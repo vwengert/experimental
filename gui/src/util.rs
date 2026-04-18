@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use slint::{ModelRc, SharedString, VecModel};
 
-use domain::schema::{ElementSchema, FieldSpec, ValueType};
+use domain::models::elements::{ElementSchema, FieldSpec, ValueType};
 
 use crate::{FileEntry, KeyData};
 
