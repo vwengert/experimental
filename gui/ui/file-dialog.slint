@@ -77,19 +77,13 @@ export component FileDialog inherits PopupWindow {
                         root.navigate(root.current-dir + "/..");
                     }
                 }
-
-                Rectangle {
-                    background: white;
-                    border-width: 1px;
-                    border-color: #aaaaaa;
-                    border-radius: 3px;
+                LineEdit {
+                    text: root.current-dir;
+                    read-only: true;
                     horizontal-stretch: 1;
-
-                    Text {
-                        text: root.current-dir;
-                        color: #333333;
-                        overflow: elide;
-                        vertical-alignment: center;
+                    vertical-stretch: 0;
+                    changed text => {
+                        self.set-selection-offsets(self.text.character-count, self.text.character-count);
                     }
                 }
             }
