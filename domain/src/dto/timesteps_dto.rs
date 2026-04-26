@@ -2,15 +2,15 @@ use crate::models::unified_model::{Position, UnifiedModel, UnifiedObject};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Timestep {
-    pub timestep: u32,
+    pub timestep: f64,
     pub num_objects: usize,
     pub own: Own,
     pub objects: Vec<Object>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Own {
     pub name: String,
     pub x: f64,

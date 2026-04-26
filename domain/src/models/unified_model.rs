@@ -17,5 +17,5 @@ pub struct Position {
     pub x: f64,
     pub y: f64,
     pub z: f64,
-    pub timestamp: u32,
+    pub timestamp: f64,
 }
