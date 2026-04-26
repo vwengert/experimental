@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Timestep {
     pub timestep: u32,
-    pub num_objects: u32,
+    pub num_objects: usize,
     pub own: Own,
     pub objects: Vec<Object>,
 }
@@ -18,7 +18,7 @@ pub struct Own {
     pub z: f64,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Object {
     pub name: String,
     pub x: f64,
@@ -99,7 +99,7 @@ impl From<UnifiedModel> for Vec<Timestep> {
 
             timesteps.push(Timestep {
                 timestep: position.timestamp,
-                num_objects: model.objects.len() as u32,
+                num_objects: model.objects.len() as usize,
                 own: Own {
                     name: model.own.name.clone(),
                     x: position.x,
