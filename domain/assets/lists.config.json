@@ -3,17 +3,8 @@
   "description": "Default configuration for lists with line/key-value definitions, including element and unit definitions",
   "properties": {
     "units": {
-      "distance": [
-        "m",
-        "km",
-        "miles"
-      ],
-      "length": [
-        "px",
-        "em",
-        "rem",
-        "%"
-      ]
+      "distance": ["m", "km", "miles"],
+      "length": ["px", "em", "rem", "%"]
     },
     "elements": {
       "Button": {
@@ -90,4 +81,3 @@
     }
   }
 }
-

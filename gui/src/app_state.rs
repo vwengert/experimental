@@ -3,10 +3,12 @@ use std::rc::Rc;
 
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
-use domain::models::model::{ItemData, ItemLine, ItemList, ItemSet};
 use domain::models::elements::Schemas;
+use domain::models::model::{ItemData, ItemLine, ItemList, ItemSet};
 
-use crate::util::{build_key_data_for_schema, build_unit_options, read_dir_entries, validate_value_str};
+use crate::util::{
+    build_key_data_for_schema, build_unit_options, read_dir_entries, validate_value_str,
+};
 use crate::{Action, ActionType, AppWindow, KeyData, LineItem};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -20,7 +22,6 @@ pub struct AppState {
     pub list_names: Rc<VecModel<SharedString>>,
     pub app_weak: slint::Weak<AppWindow>,
 }
-
 
 // ── AppState implementation ───────────────────────────────────────────────────
 
@@ -128,6 +129,7 @@ impl AppState {
             // Incrementing the epoch triggers the `changed` handler in LineRow to focus
             // the first invalid LineEdit.
             app.set_validate_epoch(app.get_validate_epoch() + 1);
+            println!("validate-epoch updated to: {}", app.get_validate_epoch());
         }
 
         all_valid
@@ -151,9 +153,12 @@ impl AppState {
             let key_data_model_rc = ModelRc::from(key_data_vec.clone());
             key_data_models.borrow_mut().push(key_data_vec);
 
-            lines_model
-                .push(LineItem { title: action.schema_name.clone(), data: key_data_model_rc });
+            lines_model.push(LineItem {
+                title: action.schema_name.clone(),
+                data: key_data_model_rc,
+            });
         }
+        self.validate_all_and_focus();
     }
 
     pub fn handle_value_changed(&self, action: &Action) {
@@ -249,9 +254,14 @@ impl AppState {
 
     pub fn handle_add_list(&self) {
         let count = self.list_models.borrow().len();
-        self.list_models.borrow_mut().push(Rc::new(VecModel::<LineItem>::default()));
-        self.all_key_data_models.borrow_mut().push(Rc::new(RefCell::new(Vec::new())));
-        self.list_names.push(SharedString::from(format!("list {count}").as_str()));
+        self.list_models
+            .borrow_mut()
+            .push(Rc::new(VecModel::<LineItem>::default()));
+        self.all_key_data_models
+            .borrow_mut()
+            .push(Rc::new(RefCell::new(Vec::new())));
+        self.list_names
+            .push(SharedString::from(format!("list {count}").as_str()));
         let new_idx = count;
         self.set_lines_model(new_idx);
     }
@@ -266,7 +276,11 @@ impl AppState {
         self.all_key_data_models.borrow_mut().remove(idx);
         self.list_names.remove(idx);
         let current = *self.active_list_idx.borrow();
-        let new_active = if current >= idx && current > 0 { current - 1 } else { current };
+        let new_active = if current >= idx && current > 0 {
+            current - 1
+        } else {
+            current
+        };
         self.set_lines_model(new_active);
     }
 
@@ -326,14 +340,18 @@ impl AppState {
                         unit: p.unit.to_string(),
                     })
                     .collect();
-                item_lines.push(ItemLine { title, data: item_sets });
+                item_lines.push(ItemLine {
+                    title,
+                    data: item_sets,
+                });
             }
-            item_lists.push(ItemList { name, lines: item_lines });
+            item_lists.push(ItemList {
+                name,
+                lines: item_lines,
+            });
         }
 
-        let data = ItemData {
-            lists: item_lists
-        };
+        let data = ItemData { lists: item_lists };
         let _ = domain::utility::persistence::save(path, &data);
 
         if let Some(app) = self.app_weak.upgrade() {
@@ -411,7 +429,8 @@ impl AppState {
             self.list_names.remove(0);
         }
         for item_list in &item_data.lists {
-            self.list_names.push(SharedString::from(item_list.name.as_str()));
+            self.list_names
+                .push(SharedString::from(item_list.name.as_str()));
         }
 
         *self.active_list_idx.borrow_mut() = 0;
@@ -467,4 +486,3 @@ impl AppState {
         }
     }
 }
-

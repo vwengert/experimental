@@ -14,6 +14,7 @@ component LineRow {
 
     // When the epoch increments (a new validate-all ran), focus this field if requested.
     changed validate-epoch => {
+        debug("Focus triggered for LineEdit at line: ", line-index, ", key-data: ", key-data-index);
         if validate-epoch > 0 && focus-line == line-index && focus-key-data == key-data-index {
             le.focus();
         }
@@ -132,7 +133,9 @@ export component LineCard inherits Rectangle {
             validate-epoch: root.validate-epoch;
             focus-line: root.focus-line;
             focus-key-data: root.focus-key-data;
-            dispatch(action) => { root.dispatch(action); }
+            dispatch(action) => {
+                root.dispatch(action);
+            }
         }
     }
 }

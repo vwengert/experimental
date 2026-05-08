@@ -1,4 +1,13 @@
-import { AboutSlint, Button, ComboBox, Palette, ScrollView, VerticalBox, HorizontalBox, StandardButton } from "std-widgets.slint";
+import {
+    AboutSlint,
+    Button,
+    ComboBox,
+    Palette,
+    ScrollView,
+    VerticalBox,
+    HorizontalBox,
+    StandardButton,
+} from "std-widgets.slint";
 import { LineItem, ActionType, Action, FileEntry } from "structs.slint";
 import { FileDialog } from "file-dialog.slint";
 import { LineCard } from "line-card.slint";
@@ -6,14 +15,15 @@ import { LineCard } from "line-card.slint";
 export component DataView inherits Dialog {
     title: "Kalkulierte Daten";
     callback closeDataView();
-    
+
     StandardButton {
         kind: close;
-        clicked => { root.closeDataView(); }
+        clicked => {
+            root.closeDataView();
+        }
     }
 
-
-    AboutSlint {}
+    AboutSlint { }
 }
 
 
@@ -24,7 +34,9 @@ export component AppWindow inherits Window {
     preferred-width: 800px;
     preferred-height: 600px;
 
-    init => { Palette.color-scheme = ColorScheme.light; }
+    init => {
+        Palette.color-scheme = ColorScheme.light;
+    }
 
     in property <[string]> schema-names;
     in property <[string]> init-schema-names;
@@ -69,9 +81,7 @@ export component AppWindow inherits Window {
         }
         confirmed(path) => {
             root.dispatch({
-                action-type: root.file-dialog-is-save
-                    ? ActionType.save-list
-                    : ActionType.load-list,
+                action-type: root.file-dialog-is-save ? ActionType.save-list : ActionType.load-list,
                 schema-name: "",
                 line-index: 0,
                 key-data-index: 0,
@@ -110,7 +120,9 @@ export component AppWindow inherits Window {
 
                     Button {
                         text: "Cancel";
-                        clicked => { confirm-exit-dialog.close(); }
+                        clicked => {
+                            confirm-exit-dialog.close();
+                        }
                     }
 
                     Button {
@@ -160,7 +172,9 @@ export component AppWindow inherits Window {
 
                     Button {
                         text: "OK";
-                        clicked => { validation-error-dialog.close(); }
+                        clicked => {
+                            validation-error-dialog.close();
+                        }
                     }
                 }
             }
@@ -174,11 +188,14 @@ export component AppWindow inherits Window {
         width: 400px;
         height: 300px;
 
-        AboutSlint {}
+        AboutSlint { }
     }
 
     changed validation-error-epoch => {
+        debug("validation-error-epoch changed to: " + validation-error-epoch);
+        debug("validate-epoch: " + validation-error-epoch); // For some reason debug() isn't showing these logs, so also print to console
         if (validation-error-epoch > 0) {
+
             validation-error-dialog.show();
         }
     }
@@ -195,6 +212,10 @@ export component AppWindow inherits Window {
             });
             file-dialog.show();
         }
+    }
+
+    changed validate-epoch => {
+        debug("validate-epoch changed to: " + validate-epoch);
     }
 
     // File menu
@@ -230,6 +251,7 @@ export component AppWindow inherits Window {
                     file-dialog.show();
                 }
             }
+
             MenuItem {
                 title: "Exit";
                 activated => {
@@ -247,6 +269,7 @@ export component AppWindow inherits Window {
                 }
             }
         }
+
         Menu {
             title: "Help";
 
@@ -271,11 +294,11 @@ export component AppWindow inherits Window {
                 height: 30px;
                 clicked => {
                     root.dispatch({
-                    action-type: ActionType.add-list,
-                    schema-name: "",
-                    line-index: 0,
-                    key-data-index: 0,
-                    new-value: "",
+                        action-type: ActionType.add-list,
+                        schema-name: "",
+                        line-index: 0,
+                        key-data-index: 0,
+                        new-value: "",
                     });
                 }
             }
@@ -284,11 +307,11 @@ export component AppWindow inherits Window {
                 text: "Delete List";
                 clicked => {
                     root.dispatch({
-                    action-type: ActionType.remove-list,
-                    schema-name: "",
-                    line-index: root.active-list-index,
-                    key-data-index: 0,
-                    new-value: "",
+                        action-type: ActionType.remove-list,
+                        schema-name: "",
+                        line-index: root.active-list-index,
+                        key-data-index: 0,
+                        new-value: "",
                     });
                 }
             }
@@ -331,7 +354,6 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
-
             }
         }
 
@@ -359,7 +381,7 @@ export component AppWindow inherits Window {
             }
         }
 
-        ScrollView {
+        scroll_view := ScrollView {
             VerticalLayout {
                 spacing: 8px;
                 padding: 8px;
@@ -373,7 +395,9 @@ export component AppWindow inherits Window {
                     validate-epoch: root.validate-epoch;
                     focus-line: root.first-invalid-line;
                     focus-key-data: root.first-invalid-key-data;
-                    dispatch(action) => { root.dispatch(action); }
+                    dispatch(action) => {
+                        root.dispatch(action);
+                    }
                 }
             }
         }
