@@ -55,9 +55,9 @@ impl AppState {
     }
 
     /// Validates every key_data in every list. Updates each key_data's `is_valid` flag, sets
-    /// the app focus properties to the first invalid field (switching the active list if
-    /// needed), and returns `true` only when all fields are valid.
-    fn validate_all_and_focus(&self) -> bool {
+    /// the app focus properties to the first invalid field (optionally switching the active list
+    /// if needed), and returns `true` only when all fields are valid.
+    fn validate_all_and_focus(&self, allow_list_switch: bool) -> bool {
         // Collect (list_idx, line_idx, key_data_idx, is_valid) results while borrowing models.
         struct InvalidField {
             list_idx: usize,
@@ -114,13 +114,15 @@ impl AppState {
             };
 
             // If the first invalid field is in a different list, switch to it.
-            if let Some(f) = &first_invalid {
-                let current = *self.active_list_idx.borrow();
-                if current != f.list_idx {
-                    *self.active_list_idx.borrow_mut() = f.list_idx;
-                    let model = self.list_models.borrow()[f.list_idx].clone();
-                    app.set_active_list_index(f.list_idx as i32);
-                    app.set_lines(ModelRc::from(model));
+            if allow_list_switch {
+                if let Some(f) = &first_invalid {
+                    let current = *self.active_list_idx.borrow();
+                    if current != f.list_idx {
+                        *self.active_list_idx.borrow_mut() = f.list_idx;
+                        let model = self.list_models.borrow()[f.list_idx].clone();
+                        app.set_active_list_index(f.list_idx as i32);
+                        app.set_lines(ModelRc::from(model));
+                    }
                 }
             }
 
@@ -129,7 +131,6 @@ impl AppState {
             // Incrementing the epoch triggers the `changed` handler in LineRow to focus
             // the first invalid LineEdit.
             app.set_validate_epoch(app.get_validate_epoch() + 1);
-            println!("validate-epoch updated to: {}", app.get_validate_epoch());
         }
 
         all_valid
@@ -158,7 +159,7 @@ impl AppState {
                 data: key_data_model_rc,
             });
         }
-        self.validate_all_and_focus();
+        self.validate_all_and_focus(false);
     }
 
     pub fn handle_value_changed(&self, action: &Action) {
@@ -264,6 +265,9 @@ impl AppState {
             .push(SharedString::from(format!("list {count}").as_str()));
         let new_idx = count;
         self.set_lines_model(new_idx);
+        if let Some(app) = self.app_weak.upgrade() {
+            app.set_focus_toolbar_epoch(app.get_focus_toolbar_epoch() + 1);
+        }
     }
 
     pub fn handle_remove_list(&self, action: &Action) {
@@ -301,7 +305,7 @@ impl AppState {
     }
 
     pub fn handle_validate_before_save(&self) {
-        if self.validate_all_and_focus() {
+        if self.validate_all_and_focus(true) {
             if let Some(app) = self.app_weak.upgrade() {
                 app.set_open_save_dialog(true);
             }
@@ -448,13 +452,125 @@ impl AppState {
         }
     }
 
+    fn focus_relative_field(&self, action: &Action, step: i32) {
+        let active = *self.active_list_idx.borrow();
+        let target = {
+            let all_key_data = self.all_key_data_models.borrow();
+            let key_data_for_list = all_key_data[active].borrow();
+            let mut positions: Vec<(i32, i32)> = Vec::new();
+
+            for (line_idx, key_data_model) in key_data_for_list.iter().enumerate() {
+                for key_idx in 0..key_data_model.row_count() {
+                    positions.push((line_idx as i32, key_idx as i32));
+                }
+            }
+
+            if positions.is_empty() {
+                None
+            } else {
+                let current = (action.line_index, action.key_data_index);
+                let current_idx = positions.iter().position(|p| *p == current).unwrap_or(0);
+
+                if step >= 0 {
+                    if current_idx + 1 >= positions.len() {
+                        self.focus_toolbar_controls();
+                        return;
+                    }
+                    Some(positions[current_idx + 1])
+                } else if current_idx == 0 {
+                    Some(positions[positions.len() - 1])
+                } else {
+                    Some(positions[current_idx - 1])
+                }
+            }
+        };
+
+        let Some((target_line, target_key)) = target else {
+            return;
+        };
+
+        if let Some(app) = self.app_weak.upgrade() {
+
+            app.set_first_invalid_line(target_line);
+            app.set_first_invalid_key_data(target_key);
+            app.set_validate_epoch(app.get_validate_epoch() + 1);
+        }
+    }
+
+    fn focus_toolbar_controls(&self) {
+        if let Some(app) = self.app_weak.upgrade() {
+            app.set_focus_toolbar_epoch(app.get_focus_toolbar_epoch() + 1);
+        }
+    }
+
+    fn cycle_list(&self, step: i32) {
+        let count = self.list_models.borrow().len();
+        if count == 0 {
+            return;
+        }
+
+        let current = *self.active_list_idx.borrow();
+        let next = if step >= 0 {
+            (current + 1) % count
+        } else if current == 0 {
+            count - 1
+        } else {
+            current - 1
+        };
+
+        self.set_lines_model(next);
+        self.focus_last_field_in_list(next);
+    }
+
+    fn focus_last_field_in_list(&self, list_idx: usize) {
+        let key_data_models = self.all_key_data_models.borrow();
+        let Some(key_data_for_list) = key_data_models.get(list_idx) else {
+            self.focus_add_list_button();
+            return;
+        };
+
+        let key_data_for_list = key_data_for_list.borrow();
+        let Some((line_idx, key_idx)) = key_data_for_list
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(li, key_data_model)| {
+                let row_count = key_data_model.row_count();
+                if row_count > 0 {
+                    Some((li as i32, (row_count - 1) as i32))
+                } else {
+                    None
+                }
+            })
+        else {
+            self.focus_add_list_button();
+            return;
+        };
+
+        if let Some(app) = self.app_weak.upgrade() {
+            app.set_first_invalid_line(line_idx);
+            app.set_first_invalid_key_data(key_idx);
+            app.set_validate_epoch(app.get_validate_epoch() + 1);
+        }
+    }
+
+    fn focus_add_list_button(&self) {
+        if let Some(app) = self.app_weak.upgrade() {
+            app.set_focus_add_list_epoch(app.get_focus_add_list_epoch() + 1);
+        }
+    }
+
     // ── Main dispatch entry point ─────────────────────────────────────────────
 
     pub fn handle_dispatch(&self, action: Action) {
         // Determine dirty-flag impact before consuming action fields
         let marks_dirty = !matches!(
             action.action_type,
-            ActionType::SwitchList
+            ActionType::TabNextField
+                | ActionType::TabPrevField
+                | ActionType::SwitchList
+                | ActionType::CycleListNext
+                | ActionType::CycleListPrev
                 | ActionType::SaveList
                 | ActionType::LoadList
                 | ActionType::NavigateDir
@@ -465,17 +581,21 @@ impl AppState {
         match action.action_type {
             ActionType::AddLine => self.handle_add_line(&action),
             ActionType::ValueChanged => self.handle_value_changed(&action),
+            ActionType::TabNextField => self.focus_relative_field(&action, 1),
+            ActionType::TabPrevField => self.focus_relative_field(&action, -1),
             ActionType::UnitChanged => self.handle_unit_changed(&action),
             ActionType::LineTypeChanged => self.handle_line_type_changed(&action),
             ActionType::RemoveLine => self.handle_remove_line(&action),
             ActionType::SwitchList => self.handle_switch_list(&action),
+            ActionType::CycleListNext => self.cycle_list(1),
+            ActionType::CycleListPrev => self.cycle_list(-1),
             ActionType::AddList => self.handle_add_list(),
             ActionType::RemoveList => self.handle_remove_list(&action),
             ActionType::SaveList => self.handle_save_list(&action),
             ActionType::LoadList => self.handle_load_list(&action),
             ActionType::NavigateDir => self.handle_navigate_dir(&action),
-            ActionType::Exit => self.handle_exit(),
             ActionType::ValidateBeforeSave => self.handle_validate_before_save(),
+            ActionType::Exit => self.handle_exit(),
         }
 
         // Update the is-dirty property on the UI

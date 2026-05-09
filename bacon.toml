@@ -1,0 +1,3 @@
+[jobs.run]
+command = ["cargo", "run", "--bin", "gui"]
+need_stdout = true

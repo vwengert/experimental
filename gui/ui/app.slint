@@ -7,10 +7,11 @@ import {
     VerticalBox,
     HorizontalBox,
     StandardButton,
+    DatePickerPopup,
 } from "std-widgets.slint";
-import { LineItem, ActionType, Action, FileEntry } from "structs.slint";
-import { FileDialog } from "file-dialog.slint";
-import { LineCard } from "line-card.slint";
+import { LineItem, ActionType, Action, FileEntry } from "@components/structs.slint";
+import { FileDialog } from "@components/file-dialog.slint";
+import { LineCard } from "@components/line-card.slint";
 
 export component DataView inherits Dialog {
     title: "Kalkulierte Daten";
@@ -55,6 +56,10 @@ export component AppWindow inherits Window {
     in-out property <int> validation-error-epoch: 0;
     // Set by Rust to true when pre-save validation passes, triggering the file dialog
     in-out property <bool> open-save-dialog: false;
+    // Incremented by Rust to move keyboard focus from line editors back to toolbar controls.
+    in-out property <int> focus-toolbar-epoch: 0;
+    // Incremented by Rust to move keyboard focus to the Add List button.
+    in-out property <int> focus-add-list-epoch: 0;
 
     // File dialog state
     private property <bool> file-dialog-is-save: true;
@@ -174,6 +179,8 @@ export component AppWindow inherits Window {
                         text: "OK";
                         clicked => {
                             validation-error-dialog.close();
+                            // Re-trigger focus on the first invalid field after popup close.
+                            root.validate-epoch += 1;
                         }
                     }
                 }
@@ -192,8 +199,6 @@ export component AppWindow inherits Window {
     }
 
     changed validation-error-epoch => {
-        debug("validation-error-epoch changed to: " + validation-error-epoch);
-        debug("validate-epoch: " + validation-error-epoch); // For some reason debug() isn't showing these logs, so also print to console
         if (validation-error-epoch > 0) {
 
             validation-error-dialog.show();
@@ -214,8 +219,16 @@ export component AppWindow inherits Window {
         }
     }
 
-    changed validate-epoch => {
-        debug("validate-epoch changed to: " + validate-epoch);
+    changed focus-toolbar-epoch => {
+        if (focus-toolbar-epoch > 0) {
+            add-line-button.focus();
+        }
+    }
+
+    changed focus-add-list-epoch => {
+        if (focus-add-list-epoch > 0) {
+            add-list-button.focus();
+        }
     }
 
     // File menu
@@ -269,6 +282,50 @@ export component AppWindow inherits Window {
                 }
             }
         }
+        Menu {
+            title: "Edit";
+            MenuItem {
+                title: "Add Line";
+                activated => {
+                    root.dispatch({
+                        action-type: ActionType.add-line,
+                        schema-name: schema-selector.current-value,
+                        line-index: 0,
+                        key-data-index: 0,
+                        new-value: "",
+                    });
+                }
+                shortcut: @keys(Control + A);
+            }
+
+            MenuItem {
+                title: "Next List";
+                activated => {
+                    root.dispatch({
+                        action-type: ActionType.cycle-list-next,
+                        schema-name: "",
+                        line-index: 0,
+                        key-data-index: 0,
+                        new-value: "",
+                    });
+                }
+                shortcut: @keys(Control + Tab);
+            }
+
+            MenuItem {
+                title: "Previous List";
+                activated => {
+                    root.dispatch({
+                        action-type: ActionType.cycle-list-prev,
+                        schema-name: "",
+                        line-index: 0,
+                        key-data-index: 0,
+                        new-value: "",
+                    });
+                }
+                shortcut: @keys(Control + Shift + Tab);
+            }
+        }
 
         Menu {
             title: "Help";
@@ -288,7 +345,7 @@ export component AppWindow inherits Window {
             alignment: start;
             padding: 4px;
             spacing: 8px;
-            Button {
+            add-list-button := Button {
                 text: "+ Add List";
                 width: 100px;
                 height: 30px;
@@ -367,7 +424,7 @@ export component AppWindow inherits Window {
                 model: root.lines.length == 0 ? root.init-schema-names : root.schema-names;
             }
 
-            Button {
+            add-line-button := Button {
                 text: "Add Line";
                 clicked => {
                     root.dispatch({

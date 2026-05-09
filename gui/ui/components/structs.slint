@@ -1,4 +1,3 @@
-
 export struct FileEntry {
     name: string,
     is-dir: bool,
@@ -20,17 +19,21 @@ export struct LineItem {
 export enum ActionType {
     add-line,
     value-changed,
+    tab-next-field,
+    tab-prev-field,
     unit-changed,
     line-type-changed,
     remove-line,
     switch-list,
+    cycle-list-next,
+    cycle-list-prev,
     add-list,
     remove-list,
     save-list,
     load-list,
     navigate-dir,
     exit,
-    validate-before-save,
+    validate-before-save
 }
 
 export struct Action {

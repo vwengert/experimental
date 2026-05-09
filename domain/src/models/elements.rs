@@ -108,7 +108,7 @@ mod tests {
         assert!(button.contains_field("label"), "Button should have 'label' field");
         assert_eq!(
             button.iter_fields().map(|(name, _)| name).collect::<Vec<_>>(),
-            vec!["label", "onClick", "disabled"]
+            vec!["label"]
         );
 
         let container = schemas.schema_for("Container").unwrap();

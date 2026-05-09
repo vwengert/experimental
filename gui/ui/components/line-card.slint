@@ -1,0 +1,175 @@
+import { Button, ComboBox, HorizontalBox, LineEdit, GroupBox, GridBox } from "std-widgets.slint";
+import { KeyData, LineItem, ActionType, Action } from "structs.slint";
+
+// One row in a LineCard: shows a key-value pair with validation feedback.
+component LineRow {
+    in property <KeyData> key-data;
+    in property <string> line-title;
+    in property <int> key-data-index;
+    in property <int> line-index;
+    in property <int> validate-epoch: 0;
+    in property <int> focus-key-data: -1;
+    in property <int> focus-line: -1;
+
+    callback dispatch(Action);
+
+    // When the epoch increments (a new validate-all ran), focus this field if requested.
+    changed validate-epoch => {
+        if (validate-epoch > 0 && focus-line == line-index && focus-key-data == key-data-index) {
+            le.focus();
+        }
+    }
+
+    // Auto-focus on first field only on init
+    init => {
+        if (key-data-index == 0) {
+            init-focus-timer.start();
+        }
+    }
+
+    init-focus-timer := Timer {
+        interval: 10ms;
+        running: false;
+        triggered => {
+            le.focus();
+            self.stop();
+        }
+    }
+
+    HorizontalBox {
+        alignment: start;
+        spacing: 8px;
+
+        Text {
+            text: key-data.key + ":";
+            min-width: 150px;
+            vertical-alignment: center;
+        }
+
+        le := LineEdit {
+            text: key-data.value;
+            min-width: 200px;
+            edited(new-value) => {
+                root.dispatch({
+                    action-type: ActionType.value-changed,
+                    schema-name: "",
+                    line-index: root.line-index,
+                    key-data-index: root.key-data-index,
+                    new-value: new-value,
+                });
+            }
+            key-pressed(event) => {
+                if (event.text == Key.Tab) {
+                    root.dispatch({
+                        action-type: event.modifiers.shift ? ActionType.tab-prev-field : ActionType.tab-next-field,
+                        schema-name: "",
+                        line-index: root.line-index,
+                        key-data-index: root.key-data-index,
+                        new-value: "",
+                    });
+                    accept;
+                }
+                reject;
+            }
+        }
+
+        // Red cross shown while the value is invalid
+        if !key-data.is-valid: Text {
+            text: "x";
+            color: red;
+            font-size: 16px;
+            vertical-alignment: center;
+        }
+
+        if key-data.unit-options.length > 0: ComboBox {
+            model: key-data.unit-options;
+            current-value: key-data.unit;
+            selected(new-unit) => {
+                root.dispatch({
+                    action-type: ActionType.unit-changed,
+                    schema-name: "",
+                    line-index: root.line-index,
+                    key-data-index: root.key-data-index,
+                    new-value: new-unit,
+                });
+            }
+        }
+
+        if key-data.unit-options.length == 0 && key-data.unit != "": Text {
+            text: key-data.unit;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component LineCard inherits GroupBox {
+    in property <LineItem> line;
+    in property <[string]> schema-names;
+    in property <[string]> init-schema-names;
+    in property <int> line-index;
+    // Focus-first-invalid support
+    in property <int> validate-epoch: 0;
+    in property <int> focus-line: -1;
+    in property <int> focus-key-data: -1;
+
+    callback dispatch(Action);
+
+    title: "Line " + (root.line-index + 1);
+    Rectangle {
+        border-width: 1px;
+        border-color: #cccccc;
+        border-radius: 4px;
+
+        VerticalLayout {
+            spacing: 4px;
+            padding: 8px;
+
+        // Line header: type selector + delete button
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+
+
+                    ComboBox {
+                        model: root.line-index == 0 ? root.init-schema-names : root.schema-names;
+                        current-value: root.line.title;
+                        selected(value) => {
+                            root.dispatch({
+                                action-type: ActionType.line-type-changed,
+                                schema-name: value,
+                                line-index: root.line-index,
+                                key-data-index: 0,
+                                new-value: "",
+                            });
+                        }
+                    }
+
+                    if root.line-index != 0: Button {
+                        text: "x";
+                        clicked => {
+                            root.dispatch({
+                                action-type: ActionType.remove-line,
+                                schema-name: "",
+                                line-index: root.line-index,
+                                key-data-index: 0,
+                                new-value: "",
+                            });
+                        }
+                    }
+                }
+
+            for key-data[j] in root.line.data: LineRow {
+                key-data: key-data;
+                line-title: root.line.title;
+                key-data-index: j;
+                line-index: root.line-index;
+                validate-epoch: root.validate-epoch;
+                focus-line: root.focus-line;
+                focus-key-data: root.focus-key-data;
+                dispatch(action) => {
+                    root.dispatch(action);
+                }
+            }
+        }
+    }
+}

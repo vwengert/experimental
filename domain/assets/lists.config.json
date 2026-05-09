@@ -15,18 +15,6 @@
             "spec": {
               "ty": "Str"
             }
-          },
-          {
-            "name": "onClick",
-            "spec": {
-              "ty": "Str"
-            }
-          },
-          {
-            "name": "disabled",
-            "spec": {
-              "ty": "Bool"
-            }
           }
         ]
       },
