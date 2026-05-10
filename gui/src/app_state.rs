@@ -1,15 +1,17 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::mpsc::{Receiver, Sender};
 
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use domain::models::elements::Schemas;
 use domain::models::model::{ItemData, ItemLine, ItemList, ItemSet};
+use domain::utility::calculation::{LineCalculationRequest, LineCalculationResult};
 
 use crate::util::{
     build_key_data_for_schema, build_unit_options, read_dir_entries, validate_value_str,
 };
-use crate::{Action, ActionType, AppWindow, KeyData, LineItem};
+use crate::{Action, ActionType, AppWindow, KeyData, LineItem, LineState};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -20,8 +22,12 @@ pub struct AppState {
     pub all_key_data_models: Rc<RefCell<Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>>>>,
     pub active_list_idx: Rc<RefCell<usize>>,
     pub list_names: Rc<VecModel<SharedString>>,
+    pub calc_sender: Sender<LineCalculationRequest>,
+    pub calc_result_receiver: RefCell<Receiver<LineCalculationResult>>,
     pub app_weak: slint::Weak<AppWindow>,
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ── AppState implementation ───────────────────────────────────────────────────
 
@@ -54,9 +60,10 @@ impl AppState {
         }
     }
 
-    /// Validates every key_data in every list. Updates each key_data's `is_valid` flag, sets
-    /// the app focus properties to the first invalid field (optionally switching the active list
-    /// if needed), and returns `true` only when all fields are valid.
+    /// Validates every key_data in every list. Updates each key_data's `is_valid` flag and
+    /// each line's `is_valid` flag accordingly. Sets the app focus properties to the first
+    /// invalid field (optionally switching the active list if needed), and returns `true`
+    /// only when all fields are valid.
     fn validate_all_and_focus(&self, allow_list_switch: bool) -> bool {
         // Collect (list_idx, line_idx, key_data_idx, is_valid) results while borrowing models.
         struct InvalidField {
@@ -75,10 +82,11 @@ impl AppState {
                 let key_data_for_list = all_key_data[list_idx].borrow();
 
                 for li in 0..lines_model.row_count() {
-                    if let (Some(line), Some(key_data_model)) =
+                    if let (Some(mut line), Some(key_data_model)) =
                         (lines_model.row_data(li), key_data_for_list.get(li))
                     {
                         let schema = self.schemas.schema_for(line.title.as_str());
+                        let mut line_is_valid = true;
                         for pi in 0..key_data_model.row_count() {
                             if let Some(mut key_data) = key_data_model.row_data(pi) {
                                 let is_valid = schema
@@ -91,13 +99,29 @@ impl AppState {
                                     key_data.is_valid = is_valid;
                                     key_data_model.set_row_data(pi, key_data);
                                 }
-                                if !is_valid && first_invalid.is_none() {
-                                    first_invalid = Some(InvalidField {
-                                        list_idx,
-                                        line_idx: li as i32,
-                                        key_data_idx: pi as i32,
-                                    });
+                                if !is_valid {
+                                    line_is_valid = false;
+                                    if first_invalid.is_none() {
+                                        first_invalid = Some(InvalidField {
+                                            list_idx,
+                                            line_idx: li as i32,
+                                            key_data_idx: pi as i32,
+                                        });
+                                    }
                                 }
+                            }
+                        }
+                        // Update line state: Invalid if any field is invalid, Valid otherwise
+                        // But only update if currently Invalid (to allow Running/Done to persist)
+                        if line.state == LineState::Invalid {
+                            let new_state = if line_is_valid {
+                                LineState::Valid
+                            } else {
+                                LineState::Invalid
+                            };
+                            if new_state != line.state {
+                                line.state = new_state;
+                                lines_model.set_row_data(li, line);
                             }
                         }
                     }
@@ -156,6 +180,7 @@ impl AppState {
 
             lines_model.push(LineItem {
                 title: action.schema_name.clone(),
+                state: LineState::Invalid,
                 data: key_data_model_rc,
             });
         }
@@ -186,6 +211,30 @@ impl AppState {
                 key_data_model.set_row_data(pi, key_data);
             }
         }
+
+        // Check if all fields in this line are now valid after the change
+        let line_is_valid = key_data_models
+            .borrow()
+            .get(li)
+            .map(|model| {
+                (0..model.row_count()).all(|i| {
+                    model.row_data(i).map(|kd| kd.is_valid).unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+
+        // Update state: Valid if all fields are valid, Invalid otherwise
+        if let Some(mut line) = lines_model.row_data(li) {
+            let new_state = if line_is_valid {
+                LineState::Valid
+            } else {
+                LineState::Invalid
+            };
+            if new_state != line.state {
+                line.state = new_state;
+                lines_model.set_row_data(li, line);
+            }
+        }
     }
 
     pub fn handle_unit_changed(&self, action: &Action) {
@@ -201,6 +250,18 @@ impl AppState {
                 key_data_model.set_row_data(pi, key_data);
             }
         }
+    }
+
+    pub fn handle_debounced_field_check(&self, action: &Action) {
+        let active = *self.active_list_idx.borrow();
+        let line_idx = action.line_index as usize;
+
+        if !self.line_is_fully_valid(active, line_idx) {
+            return;
+        }
+
+        self.set_line_calc_state(active, line_idx, 1);
+        self.notify_domain_line_valid(active, line_idx);
     }
 
     pub fn handle_line_type_changed(&self, action: &Action) {
@@ -221,6 +282,7 @@ impl AppState {
 
             if let Some(mut line) = lines_model.row_data(li) {
                 line.title = action.schema_name.clone();
+                line.state = LineState::Invalid;
                 lines_model.set_row_data(li, line);
             }
         }
@@ -418,6 +480,7 @@ impl AppState {
                 key_data_for_list.borrow_mut().push(key_data_vec.clone());
                 line_model.push(LineItem {
                     title: SharedString::from(item_line.title.as_str()),
+                    state: LineState::Valid,
                     data: ModelRc::from(key_data_vec),
                 });
             }
@@ -560,6 +623,110 @@ impl AppState {
         }
     }
 
+    fn line_is_fully_valid(&self, list_idx: usize, line_idx: usize) -> bool {
+        let all_key_data = self.all_key_data_models.borrow();
+        let Some(key_data_for_list) = all_key_data.get(list_idx) else {
+            return false;
+        };
+
+        let key_data_for_list = key_data_for_list.borrow();
+        let Some(key_data_model) = key_data_for_list.get(line_idx) else {
+            return false;
+        };
+
+        let field_count = key_data_model.row_count();
+        if field_count == 0 {
+            return false;
+        }
+
+        (0..field_count).all(|pi| {
+            key_data_model
+                .row_data(pi)
+                .map(|key_data| key_data.is_valid)
+                .unwrap_or(false)
+        })
+    }
+
+    fn snapshot_line_for_calc(&self, list_idx: usize, line_idx: usize) -> Option<ItemLine> {
+        let list_models = self.list_models.borrow();
+        let all_key_data = self.all_key_data_models.borrow();
+
+        let line_model = list_models.get(list_idx)?.row_data(line_idx)?;
+        let key_data_for_list = all_key_data.get(list_idx)?.borrow();
+        let key_data_model = key_data_for_list.get(line_idx)?;
+
+        let data = (0..key_data_model.row_count())
+            .filter_map(|pi| key_data_model.row_data(pi))
+            .map(|key_data| ItemSet {
+                key: key_data.key.to_string(),
+                value: key_data.value.to_string(),
+                unit: key_data.unit.to_string(),
+            })
+            .collect();
+
+        Some(ItemLine {
+            title: line_model.title.to_string(),
+            data,
+        })
+    }
+
+    fn notify_domain_line_valid(&self, list_idx: usize, line_idx: usize) {
+        let Some(line) = self.snapshot_line_for_calc(list_idx, line_idx) else {
+            return;
+        };
+
+        let list_name = self
+            .list_names
+            .row_data(list_idx)
+            .map(|name| name.to_string())
+            .unwrap_or_default();
+
+        let request = LineCalculationRequest {
+            list_index: list_idx,
+            list_name,
+            line_index: line_idx,
+            line,
+        };
+
+        if let Err(error) = self.calc_sender.send(request) {
+            eprintln!("failed to send line calculation request to domain: {error}");
+            self.set_line_calc_state(list_idx, line_idx, 0);
+        }
+    }
+
+    pub fn poll_calculation_results(&self) {
+        let receiver = self.calc_result_receiver.borrow_mut();
+        while let Ok(result) = receiver.try_recv() {
+            eprintln!(
+                "[gui] calc result list=#{} line=#{} numeric_values={} numeric_sum={}",
+                result.list_index, result.line_index, result.numeric_count, result.numeric_sum
+            );
+            self.set_line_calc_state(result.list_index, result.line_index, 2);
+        }
+    }
+
+    fn set_line_calc_state(&self, list_idx: usize, line_idx: usize, calc_state: i32) {
+        let list_models = self.list_models.borrow();
+        let Some(lines_model) = list_models.get(list_idx) else {
+            return;
+        };
+
+        let Some(mut line) = lines_model.row_data(line_idx) else {
+            return;
+        };
+
+        let new_state = match calc_state {
+            1 => LineState::Running,
+            2 => LineState::Done,
+            _ => return, // Only handle Running and Done states
+        };
+
+        if new_state != line.state {
+            line.state = new_state;
+            lines_model.set_row_data(line_idx, line);
+        }
+    }
+
     // ── Main dispatch entry point ─────────────────────────────────────────────
 
     pub fn handle_dispatch(&self, action: Action) {
@@ -568,6 +735,7 @@ impl AppState {
             action.action_type,
             ActionType::TabNextField
                 | ActionType::TabPrevField
+                | ActionType::DebouncedFieldCheck
                 | ActionType::SwitchList
                 | ActionType::CycleListNext
                 | ActionType::CycleListPrev
@@ -583,6 +751,7 @@ impl AppState {
             ActionType::ValueChanged => self.handle_value_changed(&action),
             ActionType::TabNextField => self.focus_relative_field(&action, 1),
             ActionType::TabPrevField => self.focus_relative_field(&action, -1),
+            ActionType::DebouncedFieldCheck => self.handle_debounced_field_check(&action),
             ActionType::UnitChanged => self.handle_unit_changed(&action),
             ActionType::LineTypeChanged => self.handle_line_type_changed(&action),
             ActionType::RemoveLine => self.handle_remove_line(&action),

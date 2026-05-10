@@ -11,8 +11,16 @@ export struct KeyData {
     is-valid: bool,
 }
 
+export enum LineState {
+    invalid,
+    valid,
+    running,
+    done,
+}
+
 export struct LineItem {
     title: string,
+    state: LineState,
     data: [KeyData],
 }
 
@@ -21,6 +29,7 @@ export enum ActionType {
     value-changed,
     tab-next-field,
     tab-prev-field,
+    debounced-field-check,
     unit-changed,
     line-type-changed,
     remove-line,

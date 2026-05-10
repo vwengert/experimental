@@ -1,7 +1,8 @@
 use domain::models::elements::Schemas;
-use slint::{ModelRc, SharedString, VecModel};
+use slint::{ModelRc, SharedString, Timer, TimerMode, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 mod app_state;
 mod util;
@@ -54,6 +55,8 @@ fn main() {
         ));
 
     let active_list_idx: Rc<RefCell<usize>> = Rc::new(RefCell::new(0));
+    let (calc_result_sender, calc_result_receiver) = std::sync::mpsc::channel();
+    let calc_sender = domain::utility::calculation::spawn_line_calculation_worker(calc_result_sender);
 
     app.set_lines(ModelRc::from(list_models.borrow()[0].clone()));
 
@@ -63,8 +66,20 @@ fn main() {
         all_key_data_models,
         active_list_idx,
         list_names: list_names_model,
+        calc_sender,
+        calc_result_receiver: RefCell::new(calc_result_receiver),
         app_weak: app.as_weak(),
     });
+
+    let poll_state = state.clone();
+    let calc_result_timer = Timer::default();
+    calc_result_timer.start(
+        TimerMode::Repeated,
+        Duration::from_millis(100),
+        move || {
+            poll_state.poll_calculation_results();
+        },
+    );
 
     app.on_dispatch(move |action| {
         state.handle_dispatch(action);
@@ -82,5 +97,6 @@ fn main() {
     });
 
     app.run().unwrap();
+    drop(calc_result_timer);
 }
 

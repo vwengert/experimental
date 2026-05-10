@@ -1,5 +1,5 @@
 import { Button, ComboBox, HorizontalBox, LineEdit, GroupBox, GridBox } from "std-widgets.slint";
-import { KeyData, LineItem, ActionType, Action } from "structs.slint";
+import { KeyData, LineItem, LineState, ActionType, Action } from "structs.slint";
 
 // One row in a LineCard: shows a key-value pair with validation feedback.
 component LineRow {
@@ -10,13 +10,25 @@ component LineRow {
     in property <int> validate-epoch: 0;
     in property <int> focus-key-data: -1;
     in property <int> focus-line: -1;
+    in property <int> focused-key-data-index: -1;
+    in property <int> focus-check-transfer-epoch: 0;
+    in property <int> focus-check-transfer-target-key-data: -1;
 
     callback dispatch(Action);
+    callback focus-changed(int, bool);
+    callback request-focus-check-transfer();
 
     // When the epoch increments (a new validate-all ran), focus this field if requested.
     changed validate-epoch => {
         if (validate-epoch > 0 && focus-line == line-index && focus-key-data == key-data-index) {
             le.focus();
+        }
+    }
+
+    changed focus-check-transfer-epoch => {
+        if (focus-check-transfer-epoch > 0 && focus-check-transfer-target-key-data == key-data-index) {
+            focus-check-timer.stop();
+            focus-check-timer.start();
         }
     }
 
@@ -49,6 +61,9 @@ component LineRow {
         le := LineEdit {
             text: key-data.value;
             min-width: 200px;
+            changed has-focus => {
+                root.focus-changed(root.key-data-index, le.has-focus);
+            }
             edited(new-value) => {
                 root.dispatch({
                     action-type: ActionType.value-changed,
@@ -57,6 +72,8 @@ component LineRow {
                     key-data-index: root.key-data-index,
                     new-value: new-value,
                 });
+                focus-check-timer.stop();
+                focus-check-timer.start();
             }
             key-pressed(event) => {
                 if (event.text == Key.Tab) {
@@ -73,13 +90,30 @@ component LineRow {
             }
         }
 
-        // Red cross shown while the value is invalid
-        if !key-data.is-valid: Text {
-            text: "x";
-            color: red;
-            font-size: 16px;
-            vertical-alignment: center;
+        focus-check-timer := Timer {
+            interval: 1s;
+            running: false;
+            triggered => {
+                if (le.has-focus) {
+                    self.start();
+                } else {
+                    if (focused-key-data-index >= 0 && focused-key-data-index != key-data-index) {
+                        root.request-focus-check-transfer();
+                    } else {
+                        root.dispatch({
+                            action-type: ActionType.debounced-field-check,
+                            schema-name: "",
+                            line-index: root.line-index,
+                            key-data-index: root.key-data-index,
+                            new-value: "",
+                        });
+                    }
+                    self.stop();
+                }
+            }
         }
+
+
 
         if key-data.unit-options.length > 0: ComboBox {
             model: key-data.unit-options;
@@ -111,8 +145,15 @@ export component LineCard inherits GroupBox {
     in property <int> validate-epoch: 0;
     in property <int> focus-line: -1;
     in property <int> focus-key-data: -1;
+    in-out property <int> focused-key-data-index: -1;
+    in-out property <int> focus-check-transfer-epoch: 0;
+    in-out property <int> focus-check-transfer-target-key-data: -1;
 
     callback dispatch(Action);
+
+    public function any-row-has-focus() -> bool {
+        return focused-key-data-index >= 0;
+    }
 
     title: "Line " + (root.line-index + 1);
     Rectangle {
@@ -124,41 +165,72 @@ export component LineCard inherits GroupBox {
             spacing: 4px;
             padding: 8px;
 
-        // Line header: type selector + delete button
-            HorizontalLayout {
-                spacing: 8px;
-                alignment: start;
+        // Line header: type selector + delete button + validation indicator
+             HorizontalLayout {
+                 spacing: 8px;
+                 alignment: space-between;
 
 
-                    ComboBox {
-                        model: root.line-index == 0 ? root.init-schema-names : root.schema-names;
-                        current-value: root.line.title;
-                        selected(value) => {
-                            root.dispatch({
-                                action-type: ActionType.line-type-changed,
-                                schema-name: value,
-                                line-index: root.line-index,
-                                key-data-index: 0,
-                                new-value: "",
-                            });
-                        }
-                    }
+                       HorizontalLayout {
+                           spacing: 8px;
+                           alignment: start;
 
-                    if root.line-index != 0: Button {
-                        text: "x";
-                        clicked => {
-                            root.dispatch({
-                                action-type: ActionType.remove-line,
-                                schema-name: "",
-                                line-index: root.line-index,
-                                key-data-index: 0,
-                                new-value: "",
-                            });
-                        }
-                    }
-                }
+                           ComboBox {
+                               model: root.line-index == 0 ? root.init-schema-names : root.schema-names;
+                               current-value: root.line.title;
+                               selected(value) => {
+                                   root.dispatch({
+                                       action-type: ActionType.line-type-changed,
+                                       schema-name: value,
+                                       line-index: root.line-index,
+                                       key-data-index: 0,
+                                       new-value: "",
+                                   });
+                               }
+                           }
 
-            for key-data[j] in root.line.data: LineRow {
+                           if root.line-index != 0: Button {
+                               text: "x";
+                               clicked => {
+                                   root.dispatch({
+                                       action-type: ActionType.remove-line,
+                                       schema-name: "",
+                                       line-index: root.line-index,
+                                       key-data-index: 0,
+                                       new-value: "",
+                                   });
+                               }
+                           }
+                       }
+
+                       HorizontalLayout {
+                           spacing: 8px;
+                           alignment: end;
+
+                           if root.line.state == LineState.invalid: Text {
+                               text: "invalid";
+                               color: red;
+                               vertical-alignment: center;
+                           }
+                           if root.line.state == LineState.valid: Text {
+                               text: "valid";
+                               color: #ffb81c;
+                               vertical-alignment: center;
+                           }
+                           if root.line.state == LineState.running: Text {
+                               text: "running";
+                               color: #1f6feb;
+                               vertical-alignment: center;
+                           }
+                           if root.line.state == LineState.done: Text {
+                               text: "done";
+                               color: #2da44e;
+                               vertical-alignment: center;
+                           }
+                       }
+                   }
+
+             for key-data[j] in root.line.data: LineRow {
                 key-data: key-data;
                 line-title: root.line.title;
                 key-data-index: j;
@@ -166,6 +238,22 @@ export component LineCard inherits GroupBox {
                 validate-epoch: root.validate-epoch;
                 focus-line: root.focus-line;
                 focus-key-data: root.focus-key-data;
+                focused-key-data-index: root.focused-key-data-index;
+                focus-check-transfer-epoch: root.focus-check-transfer-epoch;
+                focus-check-transfer-target-key-data: root.focus-check-transfer-target-key-data;
+                focus-changed(idx, has-focus) => {
+                    if (has-focus) {
+                        root.focused-key-data-index = idx;
+                    } else if (root.focused-key-data-index == idx) {
+                        root.focused-key-data-index = -1;
+                    }
+                }
+                request-focus-check-transfer() => {
+                    if (root.any-row-has-focus()) {
+                        root.focus-check-transfer-target-key-data = root.focused-key-data-index;
+                        root.focus-check-transfer-epoch += 1;
+                    }
+                }
                 dispatch(action) => {
                     root.dispatch(action);
                 }
