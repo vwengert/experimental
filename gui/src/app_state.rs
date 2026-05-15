@@ -39,6 +39,56 @@ pub struct AppState {
 // ── AppState implementation ───────────────────────────────────────────────────
 
 impl AppState {
+    fn validate_key_data_value(
+        &self,
+        schema: Option<&domain::models::elements::ElementSchema>,
+        key_data: &KeyData,
+    ) -> bool {
+        schema
+            .and_then(|s| s.field(key_data.key.as_str()))
+            .map(|spec| validate_value_str(key_data.value.as_str(), spec.ty))
+            .unwrap_or(!key_data.value.is_empty())
+    }
+    fn validate_line_model(
+        &self,
+        lines_model: &LineModel,
+        key_data_model: &KeyDataModel,
+        line_idx: usize,
+        preserve_non_validation_state: bool,
+    ) -> Option<i32> {
+        let mut line = lines_model.row_data(line_idx)?;
+        let schema = self.schemas.schema_for(line.title.as_str());
+        let mut first_invalid_key_idx: Option<i32> = None;
+        let mut line_is_valid = true;
+        for pi in 0..key_data_model.row_count() {
+            if let Some(mut key_data) = key_data_model.row_data(pi) {
+                let is_valid = self.validate_key_data_value(schema, &key_data);
+                if is_valid != key_data.is_valid {
+                    key_data.is_valid = is_valid;
+                    key_data_model.set_row_data(pi, key_data);
+                }
+                if !is_valid {
+                    line_is_valid = false;
+                    if first_invalid_key_idx.is_none() {
+                        first_invalid_key_idx = Some(pi as i32);
+                    }
+                }
+            }
+        }
+        let can_update_state = !preserve_non_validation_state || line.state == LineState::Invalid;
+        if can_update_state {
+            let new_state = if line_is_valid {
+                LineState::Valid
+            } else {
+                LineState::Invalid
+            };
+            if new_state != line.state {
+                line.state = new_state;
+                lines_model.set_row_data(line_idx, line);
+            }
+        }
+        first_invalid_key_idx
+    }
     fn ordered_sets_for_schema<'a>(
         schema: Option<&'a domain::models::elements::ElementSchema>,
         data: &'a [ItemSet],
@@ -72,78 +122,42 @@ impl AppState {
     /// invalid field (optionally switching the active list if needed), and returns `true`
     /// only when all fields are valid.
     fn validate_all_and_focus(&self, allow_list_switch: bool) -> bool {
-        // Collect (list_idx, line_idx, key_data_idx, is_valid) results while borrowing models.
+        // Collect (list_idx, line_idx, key_data_idx) while borrowing models.
         struct InvalidField {
             list_idx: usize,
             line_idx: i32,
             key_data_idx: i32,
         }
         let mut first_invalid: Option<InvalidField> = None;
-
         {
             let list_models = self.list_models.borrow();
             let all_key_data = self.all_key_data_models.borrow();
-
             for list_idx in 0..list_models.len() {
                 let lines_model = &list_models[list_idx];
                 let key_data_for_list = all_key_data[list_idx].borrow();
-
                 for li in 0..lines_model.row_count() {
-                    if let (Some(mut line), Some(key_data_model)) =
-                        (lines_model.row_data(li), key_data_for_list.get(li))
-                    {
-                        let schema = self.schemas.schema_for(line.title.as_str());
-                        let mut line_is_valid = true;
-                        for pi in 0..key_data_model.row_count() {
-                            if let Some(mut key_data) = key_data_model.row_data(pi) {
-                                let is_valid = schema
-                                    .and_then(|s| s.field(key_data.key.as_str()))
-                                    .map(|spec| {
-                                        validate_value_str(key_data.value.as_str(), spec.ty)
-                                    })
-                                    .unwrap_or(!key_data.value.is_empty());
-                                if is_valid != key_data.is_valid {
-                                    key_data.is_valid = is_valid;
-                                    key_data_model.set_row_data(pi, key_data);
-                                }
-                                if !is_valid {
-                                    line_is_valid = false;
-                                    if first_invalid.is_none() {
-                                        first_invalid = Some(InvalidField {
-                                            list_idx,
-                                            line_idx: li as i32,
-                                            key_data_idx: pi as i32,
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                        // Update line state: Invalid if any field is invalid, Valid otherwise
-                        // But only update if currently Invalid (to allow Running/Done to persist)
-                        if line.state == LineState::Invalid {
-                            let new_state = if line_is_valid {
-                                LineState::Valid
-                            } else {
-                                LineState::Invalid
-                            };
-                            if new_state != line.state {
-                                line.state = new_state;
-                                lines_model.set_row_data(li, line);
+                    if let Some(key_data_model) = key_data_for_list.get(li) {
+                        if let Some(key_idx) =
+                            self.validate_line_model(lines_model, key_data_model, li, true)
+                        {
+                            if first_invalid.is_none() {
+                                first_invalid = Some(InvalidField {
+                                    list_idx,
+                                    line_idx: li as i32,
+                                    key_data_idx: key_idx,
+                                });
                             }
                         }
                     }
                 }
             }
         } // list_models and all_key_data borrows released here
-
         let all_valid = first_invalid.is_none();
-
         if let Some(app) = self.app_weak.upgrade() {
             let (invalid_line, invalid_key_data) = match &first_invalid {
                 Some(f) => (f.line_idx, f.key_data_idx),
                 None => (-1, -1),
             };
-
             // If the first invalid field is in a different list, switch to it.
             if allow_list_switch {
                 if let Some(f) = &first_invalid {
@@ -156,14 +170,12 @@ impl AppState {
                     }
                 }
             }
-
             app.set_first_invalid_line(invalid_line);
             app.set_first_invalid_key_data(invalid_key_data);
             // Incrementing the epoch triggers the `changed` handler in LineRow to focus
             // the first invalid LineEdit.
             app.set_validate_epoch(app.get_validate_epoch() + 1);
         }
-
         all_valid
     }
 
@@ -198,49 +210,15 @@ impl AppState {
         let active = *self.active_list_idx.borrow();
         let lines_model = self.list_models.borrow()[active].clone();
         let key_data_models = self.all_key_data_models.borrow()[active].clone();
-
         let li = action.line_index as usize;
         let pi = action.key_data_index as usize;
         let borrowed = key_data_models.borrow();
         if let Some(key_data_model) = borrowed.get(li) {
             if let Some(mut key_data) = key_data_model.row_data(pi) {
-                let new_valid = lines_model
-                    .row_data(li)
-                    .and_then(|line| self.schemas.schema_for(line.title.as_str()))
-                    .and_then(|schema| schema.field(key_data.key.as_str()))
-                    .map(|spec| validate_value_str(action.new_value.as_str(), spec.ty))
-                    .unwrap_or(!action.new_value.is_empty());
                 key_data.value = action.new_value.clone();
-                // Only update the model when something actually changed to avoid unnecessary redraws
-                if new_valid != key_data.is_valid {
-                    key_data.is_valid = new_valid;
-                }
                 key_data_model.set_row_data(pi, key_data);
             }
-        }
-
-        // Check if all fields in this line are now valid after the change
-        let line_is_valid = key_data_models
-            .borrow()
-            .get(li)
-            .map(|model| {
-                (0..model.row_count()).all(|i| {
-                    model.row_data(i).map(|kd| kd.is_valid).unwrap_or(false)
-                })
-            })
-            .unwrap_or(false);
-
-        // Update state: Valid if all fields are valid, Invalid otherwise
-        if let Some(mut line) = lines_model.row_data(li) {
-            let new_state = if line_is_valid {
-                LineState::Valid
-            } else {
-                LineState::Invalid
-            };
-            if new_state != line.state {
-                line.state = new_state;
-                lines_model.set_row_data(li, line);
-            }
+            self.validate_line_model(&lines_model, key_data_model, li, false);
         }
     }
 
@@ -285,7 +263,6 @@ impl AppState {
             if let Some(key_data_model) = borrowed.get(li) {
                 key_data_model.set_vec(key_data);
             }
-            drop(borrowed);
 
             if let Some(mut line) = lines_model.row_data(li) {
                 line.title = action.schema_name.clone();
