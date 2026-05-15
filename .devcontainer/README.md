@@ -1,22 +1,35 @@
 # Dev Container
 
-## Minimal setup
+## Setup
 
-This project uses a minimal VS Code dev container configuration in `.devcontainer/devcontainer.json`.
+This project uses an image-based dev container configuration in `.devcontainer/devcontainer.json`.
 
-- base image: `mcr.microsoft.com/devcontainers/rust:1-1-bookworm`
+- base image: `mcr.microsoft.com/devcontainers/rust:1-1-bookworm` (configured directly in `devcontainer.json`)
 - workspace path: `/workspaces/experimental`
-- default user: `vscode`
-- UID/GID sync: disabled (`updateRemoteUserUID: false`) to avoid host repo ownership changes
+- default user: `ubuntu`
 - Podman mapping: `--userns=keep-id:uid=1000,gid=1000` keeps workspace writable without chowning host files
 
 ## Included Rust tooling
 
-The image installs:
+During `postCreateCommand`, the container installs and configures:
 
 - `rustfmt`
 - `clippy`
 - `cargo-audit`
+- `bacon`
+- `cargo-nextest`
+
+Rust is pinned to `1.90.0` via `rust-toolchain.toml`, and `postCreateCommand` also installs/sets toolchain `1.90.0`.
+
+## Included system packages
+
+During `postCreateCommand`, these packages are installed:
+
+- `pkg-config`, `cmake`, `clang`
+- `libfontconfig1-dev`, `libxkbcommon-x11-0`, `libxkbcommon-dev`
+- `libwayland-dev`, `libegl1-mesa-dev`, `libgl1-mesa-dev`
+- `libx11-dev`, `libxcursor-dev`, `libxi-dev`, `libxrandr-dev`, `libxrender-dev`, `libxcb1-dev`
+- `libinput10`, `x11-apps`
 
 ## VS Code extensions
 
@@ -38,7 +51,6 @@ Recommended in workspace (`.vscode/extensions.json`):
 - `hbenl.vscode-test-explorer`
 - `esbenp.prettier-vscode`
 
-Rust is pinned to `1.90.0` via `rust-toolchain.toml`.
 
 ## Open in container
 
