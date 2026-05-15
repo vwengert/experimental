@@ -6,7 +6,7 @@ use std::time::Duration;
 
 mod app_state;
 mod util;
-use app_state::AppState;
+use app_state::{AllKeyDataModels, AppState, KeyDataModel, KeyDataModelsForList, LineModel, ListModels};
 use util::read_dir_entries;
 
 slint::include_modules!();
@@ -43,16 +43,15 @@ fn main() {
         Rc::new(VecModel::from(vec![SharedString::from("own")]));
     app.set_list_names(ModelRc::from(list_names_model.clone()));
 
-    let list_models: Rc<RefCell<Vec<Rc<VecModel<LineItem>>>>> = Rc::new(RefCell::new(
-        (0..LIST_COUNT).map(|_| Rc::new(VecModel::<LineItem>::default())).collect(),
+    let list_models: ListModels = Rc::new(RefCell::new(
+        (0..LIST_COUNT).map(|_| Rc::new(VecModel::<LineItem>::default()) as LineModel).collect(),
     ));
 
-    let all_key_data_models: Rc<RefCell<Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>>>> =
-        Rc::new(RefCell::new(
-            (0..LIST_COUNT)
-                .map(|_| Rc::new(RefCell::new(Vec::<Rc<VecModel<KeyData>>>::new())))
-                .collect(),
-        ));
+    let all_key_data_models: AllKeyDataModels = Rc::new(RefCell::new(
+        (0..LIST_COUNT)
+            .map(|_| Rc::new(RefCell::new(Vec::<KeyDataModel>::new())) as KeyDataModelsForList)
+            .collect(),
+    ));
 
     let active_list_idx: Rc<RefCell<usize>> = Rc::new(RefCell::new(0));
     let (calc_result_sender, calc_result_receiver) = std::sync::mpsc::channel();

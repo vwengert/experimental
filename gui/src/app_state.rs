@@ -15,11 +15,18 @@ use crate::{Action, ActionType, AppWindow, KeyData, LineItem, LineState};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+pub type LineModel = Rc<VecModel<LineItem>>;
+pub type ListModels = Rc<RefCell<Vec<LineModel>>>;
+
+pub type KeyDataModel = Rc<VecModel<KeyData>>;
+pub type KeyDataModelsForList = Rc<RefCell<Vec<KeyDataModel>>>;
+pub type AllKeyDataModels = Rc<RefCell<Vec<KeyDataModelsForList>>>;
+
 /// All shared application state passed to dispatch handlers.
 pub struct AppState {
     pub schemas: Schemas,
-    pub list_models: Rc<RefCell<Vec<Rc<VecModel<LineItem>>>>>,
-    pub all_key_data_models: Rc<RefCell<Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>>>>,
+    pub list_models: ListModels,
+    pub all_key_data_models: AllKeyDataModels,
     pub active_list_idx: Rc<RefCell<usize>>,
     pub list_names: Rc<VecModel<SharedString>>,
     pub calc_sender: Sender<LineCalculationRequest>,
