@@ -6,7 +6,7 @@ This is a Rust workspace with three crates:
 - `cli`: minimal command-line entrypoint
 Workspace root is `Cargo.toml` with members `cli`, `domain`, `gui`.
 ## Devcontainer Conventions
-- Treat `.devcontainer/devcontainer.json` and `.devcontainer/Dockerfile` as the source of truth for containerized development.
+- Treat `.devcontainer/devcontainer.json` as the source of truth for containerized development.
 - Keep `.devcontainer/README.md` aligned with the actual devcontainer setup (installed tools, extensions, and open/rebuild flow).
 - When adding developer tooling, prefer reproducible setup in the devcontainer over one-off local-only steps.
 ## Workspace Path Conventions
@@ -14,6 +14,8 @@ Workspace root is `Cargo.toml` with members `cli`, `domain`, `gui`.
 - Prefer container paths for all reads, edits, and commands when both host and container paths are visible.
 - Do not assume host IDE metadata paths (for example under `~/.config/JetBrains/...`) are the repo root.
 - If a file is not found, verify path context first (container root vs host path) before proceeding.
+- Treat host IDE paths as editor metadata only, not as the source tree.
+- If the container workspace and host IDE path differ, always use the container workspace as the source of truth.
 ## Architecture and Boundaries
 - Keep domain logic in `domain`.
 - Keep UI state and event wiring in `gui`.
