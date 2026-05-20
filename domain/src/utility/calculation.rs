@@ -19,7 +19,7 @@ pub struct LineCalculationResult {
 }
 
 pub fn spawn_line_calculation_worker(
-    result_sender: Sender<LineCalculationResult>,
+    result_sender: Sender<Result<LineCalculationResult, String>>,
 ) -> Sender<LineCalculationRequest> {
     let (tx, rx) = mpsc::channel::<LineCalculationRequest>();
 
@@ -51,7 +51,7 @@ pub fn spawn_line_calculation_worker(
                 numeric_sum,
             };
 
-            if let Err(error) = result_sender.send(result) {
+            if let Err(error) = result_sender.send(Ok(result)) {
                 eprintln!("[domain-calc] failed to send result: {error}");
             }
         }
@@ -102,5 +102,3 @@ mod tests {
         assert!((sum - 12.5).abs() < f64::EPSILON);
     }
 }
-
-

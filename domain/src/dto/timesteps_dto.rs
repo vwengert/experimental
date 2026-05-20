@@ -32,7 +32,7 @@ impl From<Vec<Timestep>> for UnifiedModel {
             .iter()
             .map(|timestep| timestep.num_objects)
             .max()
-            .unwrap_or(0) as usize;
+            .unwrap_or(0);
 
         let own_positions: Vec<Position> = timesteps
             .iter()
@@ -99,7 +99,7 @@ impl From<UnifiedModel> for Vec<Timestep> {
 
             timesteps.push(Timestep {
                 timestep: position.timestamp,
-                num_objects: model.objects.len() as usize,
+                num_objects: model.objects.len(),
                 own: Own {
                     name: model.own.name.clone(),
                     x: position.x,

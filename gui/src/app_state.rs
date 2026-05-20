@@ -30,7 +30,7 @@ pub struct AppState {
     pub active_list_idx: Rc<RefCell<usize>>,
     pub list_names: Rc<VecModel<SharedString>>,
     pub calc_sender: Sender<LineCalculationRequest>,
-    pub calc_result_receiver: RefCell<Receiver<LineCalculationResult>>,
+    pub calc_result_receiver: RefCell<Receiver<Result<LineCalculationResult, String>>>,
     pub app_weak: slint::Weak<AppWindow>,
 }
 
@@ -430,7 +430,7 @@ impl AppState {
         }
 
         let mut new_list_models: Vec<Rc<VecModel<LineItem>>> = Vec::new();
-        let mut new_key_data_models: Vec<Rc<RefCell<Vec<Rc<VecModel<KeyData>>>>>> = Vec::new();
+        let mut new_key_data_models: Vec<KeyDataModelsForList> = Vec::new();
 
         for item_list in &item_data.lists {
             let line_model: Rc<VecModel<LineItem>> = Rc::new(VecModel::<LineItem>::default());
@@ -537,7 +537,6 @@ impl AppState {
         };
 
         if let Some(app) = self.app_weak.upgrade() {
-
             app.set_first_invalid_line(target_line);
             app.set_first_invalid_key_data(target_key);
             app.set_validate_epoch(app.get_validate_epoch() + 1);
@@ -577,18 +576,19 @@ impl AppState {
         };
 
         let key_data_for_list = key_data_for_list.borrow();
-        let Some((line_idx, key_idx)) = key_data_for_list
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(li, key_data_model)| {
-                let row_count = key_data_model.row_count();
-                if row_count > 0 {
-                    Some((li as i32, (row_count - 1) as i32))
-                } else {
-                    None
-                }
-            })
+        let Some((line_idx, key_idx)) =
+            key_data_for_list
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(li, key_data_model)| {
+                    let row_count = key_data_model.row_count();
+                    if row_count > 0 {
+                        Some((li as i32, (row_count - 1) as i32))
+                    } else {
+                        None
+                    }
+                })
         else {
             self.focus_add_list_button();
             return;
@@ -680,12 +680,20 @@ impl AppState {
 
     pub fn poll_calculation_results(&self) {
         let receiver = self.calc_result_receiver.borrow_mut();
+
         while let Ok(result) = receiver.try_recv() {
-            eprintln!(
-                "[gui] calc result list=#{} line=#{} numeric_values={} numeric_sum={}",
-                result.list_index, result.line_index, result.numeric_count, result.numeric_sum
-            );
-            self.set_line_calc_state(result.list_index, result.line_index, 2);
+            match result {
+                Ok(line_result) => {
+                    eprintln!(
+                        "[gui] Received result: list_index={}, line_index={}, numeric_count={}, numeric_sum={}",
+                        line_result.list_index, line_result.line_index, line_result.numeric_count, line_result.numeric_sum
+                    );
+                    self.set_line_calc_state(line_result.list_index, line_result.line_index, 2);
+                }
+                Err(error_message) => {
+                    eprintln!("[gui] Error received: {error_message}");
+                }
+            }
         }
     }
 
