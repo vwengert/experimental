@@ -30,6 +30,32 @@ pub fn validate_field(
     Ok(())
 }
 
+pub fn validate_field_without_unit(
+    field: Option<&FieldSpec>,
+    field_name: &'static str,
+    expected_type: ValueType,
+) -> Result<(), ItemLineConversionError> {
+    let field = field.ok_or(ItemLineConversionError::SchemaFieldMissing { field: field_name })?;
+
+    if field.ty != expected_type {
+        return Err(ItemLineConversionError::SchemaFieldTypeMismatch {
+            field: field_name,
+            expected: expected_type,
+            found: field.ty,
+        });
+    }
+
+    if field.unit.is_some() {
+        return Err(ItemLineConversionError::SchemaFieldUnitMismatch {
+            field: field_name,
+            expected: "none",
+            found: field.unit.clone(),
+        });
+    }
+
+    Ok(())
+}
+
 pub fn parse_float_value(
     line: &ItemLine,
     field: &'static str,
@@ -54,6 +80,13 @@ pub fn parse_int_value(
             field,
             value: value.to_string(),
         })
+}
+
+pub fn parse_string_value(
+    line: &ItemLine,
+    field: &'static str,
+) -> Result<String, ItemLineConversionError> {
+    Ok(find_value(line, field)?.to_string())
 }
 
 pub fn parse_length_unit(

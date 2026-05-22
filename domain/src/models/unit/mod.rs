@@ -1,5 +1,7 @@
+pub mod distance_unit;
 pub mod length_unit;
 
+pub use distance_unit::DistanceUnit;
 pub use length_unit::LengthUnit;
 
 pub trait UnitConvertible: Copy {

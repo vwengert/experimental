@@ -5,7 +5,10 @@ use crate::models::elements::ValueType;
 pub use crate::models::error::item_line_conversion_error::ItemLineConversionError;
 pub use crate::models::unit::length_unit::LengthUnit;
 use crate::models::unit::UnitConvertible;
-use crate::utility::parse::{parse_float_value, parse_int_value, parse_length_unit, validate_field};
+use crate::utility::parse::{
+    parse_float_value, parse_int_value, parse_length_unit, parse_string_value, validate_field,
+    validate_field_without_unit,
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ValueWithUnit<T, U> {
@@ -40,6 +43,24 @@ pub struct ContainerLine {
     pub height: ValueWithUnit<f64, LengthUnit>,
     #[item_field(ty = "Int", unit = "length")]
     pub padding: ValueWithUnit<i64, LengthUnit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ItemLineStruct)]
+#[item_line(element = "Button")]
+pub struct ButtonLine {
+    #[item_field(ty = "Str")]
+    pub label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ItemLineStruct)]
+#[item_line(element = "TextField")]
+pub struct TextFieldLine {
+    #[item_field(ty = "Str")]
+    pub placeholder: String,
+    #[item_field(name = "maxLength", ty = "Int")]
+    pub max_length: i64,
+    #[item_field(ty = "Str")]
+    pub value: String,
 }
 
 #[cfg(test)]
@@ -148,5 +169,51 @@ mod tests {
         let converted = value_in.convert_to(LengthUnit::Em);
         assert!((converted.value - 3.0).abs() < f64::EPSILON);
         assert_eq!(converted.unit, LengthUnit::Em);
+    }
+
+    #[test]
+    fn converts_button_line_to_typed_struct() {
+        let schemas = Schemas::load_default();
+        let line = ItemLine {
+            title: "Button".into(),
+            data: vec![ItemSet {
+                key: "label".into(),
+                value: "Submit".into(),
+                unit: String::new(),
+            }],
+        };
+
+        let button = ButtonLine::try_from_item_line(&line, &schemas).unwrap();
+        assert_eq!(button.label, "Submit");
+    }
+
+    #[test]
+    fn converts_text_field_line_to_typed_struct() {
+        let schemas = Schemas::load_default();
+        let line = ItemLine {
+            title: "TextField".into(),
+            data: vec![
+                ItemSet {
+                    key: "placeholder".into(),
+                    value: "Your name".into(),
+                    unit: String::new(),
+                },
+                ItemSet {
+                    key: "maxLength".into(),
+                    value: "120".into(),
+                    unit: String::new(),
+                },
+                ItemSet {
+                    key: "value".into(),
+                    value: "Alice".into(),
+                    unit: String::new(),
+                },
+            ],
+        };
+
+        let text_field = TextFieldLine::try_from_item_line(&line, &schemas).unwrap();
+        assert_eq!(text_field.placeholder, "Your name");
+        assert_eq!(text_field.max_length, 120);
+        assert_eq!(text_field.value, "Alice");
     }
 }

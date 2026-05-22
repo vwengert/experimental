@@ -1,20 +1,15 @@
-use serde::{Deserialize, Serialize};
 use unit_enum_derive::UnitEnum;
 
 use crate::models::unit::UnitConvertible;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, UnitEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, UnitEnum)]
 pub enum LengthUnit {
-    #[unit(factor = 1.0)]
-    #[serde(rename = "px")]
+    #[unit(rename = "px", factor = 1.0)]
     Px,
-    #[unit(factor = 3.0)]
-    #[serde(rename = "em")]
+    #[unit(rename = "em", factor = 3.0)]
     Em,
-    #[unit(factor = 2.0)]
-    #[serde(rename = "rem")]
+    #[unit(rename = "rem", factor = 2.0)]
     Rem,
-    #[unit(factor = 0.5)]
-    #[serde(rename = "%")]
+    #[unit(rename = "%", factor = 0.5)]
     Percent,
 }
