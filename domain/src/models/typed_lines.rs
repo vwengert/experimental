@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
+use unit_enum_derive::ItemLineStruct;
 
-use crate::models::elements::{Schemas, ValueType};
+use crate::models::elements::ValueType;
 pub use crate::models::error::item_line_conversion_error::ItemLineConversionError;
-use crate::models::model::ItemLine;
 pub use crate::models::unit::length_unit::LengthUnit;
 use crate::models::unit::UnitConvertible;
+use crate::utility::parse::{parse_float_value, parse_int_value, parse_length_unit, validate_field};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ValueWithUnit<T, U> {
@@ -30,144 +31,15 @@ impl<U: UnitConvertible> ValueWithUnit<i64, U> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ItemLineStruct)]
+#[item_line(element = "Container")]
 pub struct ContainerLine {
+    #[item_field(ty = "Float", unit = "length")]
     pub width: ValueWithUnit<f64, LengthUnit>,
+    #[item_field(ty = "Float", unit = "length")]
     pub height: ValueWithUnit<f64, LengthUnit>,
+    #[item_field(ty = "Int", unit = "length")]
     pub padding: ValueWithUnit<i64, LengthUnit>,
-}
-
-impl ContainerLine {
-    pub fn try_from_item_line(
-        line: &ItemLine,
-        schemas: &Schemas,
-    ) -> Result<Self, ItemLineConversionError> {
-        validate_container_schema(schemas)?;
-
-        if line.title != "Container" {
-            return Err(ItemLineConversionError::WrongElementType {
-                expected: "Container",
-                found: line.title.clone(),
-            });
-        }
-
-        Ok(Self {
-            width: ValueWithUnit {
-                value: parse_float_value(line, "width")?,
-                unit: parse_length_unit(line, schemas, "width")?,
-            },
-            height: ValueWithUnit {
-                value: parse_float_value(line, "height")?,
-                unit: parse_length_unit(line, schemas, "height")?,
-            },
-            padding: ValueWithUnit {
-                value: parse_int_value(line, "padding")?,
-                unit: parse_length_unit(line, schemas, "padding")?,
-            },
-        })
-    }
-}
-
-fn validate_container_schema(schemas: &Schemas) -> Result<(), ItemLineConversionError> {
-    let schema = schemas
-        .schema_for("Container")
-        .ok_or(ItemLineConversionError::MissingContainerSchema)?;
-
-    validate_field(schema.field("width"), "width", ValueType::Float, "length")?;
-    validate_field(schema.field("height"), "height", ValueType::Float, "length")?;
-    validate_field(schema.field("padding"), "padding", ValueType::Int, "length")?;
-
-    if !schemas.units.contains_key("length") {
-        return Err(ItemLineConversionError::MissingLengthUnitGroup);
-    }
-
-    Ok(())
-}
-
-fn validate_field(
-    field: Option<&crate::models::elements::FieldSpec>,
-    field_name: &'static str,
-    expected_type: ValueType,
-    expected_unit: &'static str,
-) -> Result<(), ItemLineConversionError> {
-    let field = field.ok_or(ItemLineConversionError::SchemaFieldMissing { field: field_name })?;
-
-    if field.ty != expected_type {
-        return Err(ItemLineConversionError::SchemaFieldTypeMismatch {
-            field: field_name,
-            expected: expected_type,
-            found: field.ty,
-        });
-    }
-
-    if field.unit.as_deref() != Some(expected_unit) {
-        return Err(ItemLineConversionError::SchemaFieldUnitMismatch {
-            field: field_name,
-            expected: expected_unit,
-            found: field.unit.clone(),
-        });
-    }
-
-    Ok(())
-}
-
-fn parse_float_value(line: &ItemLine, field: &'static str) -> Result<f64, ItemLineConversionError> {
-    let value = find_value(line, field)?;
-    value
-        .parse::<f64>()
-        .map_err(|_| ItemLineConversionError::InvalidFloatValue {
-            field,
-            value: value.to_string(),
-        })
-}
-
-fn parse_int_value(line: &ItemLine, field: &'static str) -> Result<i64, ItemLineConversionError> {
-    let value = find_value(line, field)?;
-    value
-        .parse::<i64>()
-        .map_err(|_| ItemLineConversionError::InvalidIntValue {
-            field,
-            value: value.to_string(),
-        })
-}
-
-fn parse_length_unit(
-    line: &ItemLine,
-    schemas: &Schemas,
-    field: &'static str,
-) -> Result<LengthUnit, ItemLineConversionError> {
-    let item = line
-        .data
-        .iter()
-        .find(|item| item.key == field)
-        .ok_or(ItemLineConversionError::MissingValue { field })?;
-
-    let allowed_units = schemas
-        .units
-        .get("length")
-        .ok_or(ItemLineConversionError::MissingLengthUnitGroup)?;
-    if !allowed_units.iter().any(|unit| unit == &item.unit) {
-        return Err(ItemLineConversionError::UnitNotAllowedForLength {
-            unit: item.unit.clone(),
-        });
-    }
-
-    LengthUnit::try_from(item.unit.as_str()).map_err(|_| {
-        ItemLineConversionError::UnsupportedLengthUnit {
-            unit: item.unit.clone(),
-        }
-    })
-}
-
-fn find_value<'a>(
-    line: &'a ItemLine,
-    field: &'static str,
-) -> Result<&'a str, ItemLineConversionError> {
-    line.data
-        .iter()
-        .find(|item| item.key == field)
-        .map(|item| item.value.as_str())
-        .ok_or(ItemLineConversionError::MissingValue { field })
 }
 
 #[cfg(test)]
