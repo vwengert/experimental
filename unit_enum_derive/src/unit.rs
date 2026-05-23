@@ -35,12 +35,6 @@ pub fn expand_derive_unit_enum(input: TokenStream) -> TokenStream {
     let expanded = format!(
         "
 impl {enum_name} {{
-    pub fn as_str(&self) -> &'static str {{
-        match self {{
-            {as_str_arms}
-        }}
-    }}
-
     pub fn factor(&self) -> f64 {{
         match self {{
             {factor_arms}

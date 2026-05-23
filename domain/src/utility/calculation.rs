@@ -5,13 +5,81 @@ use std::time::Duration;
 use crate::models::elements::Schemas;
 use crate::models::model::ItemLine;
 use crate::models::typed_lines::{ButtonLine, ContainerLine, TextFieldLine};
-use crate::models::unit::length_unit::LengthUnit;
+
+pub enum LineGenerator {
+    Container(ContainerLine),
+    Button(ButtonLine),
+    TextField(TextFieldLine),
+    Unknown(UnknownLineData),
+}
+
+pub struct UnknownLineData {
+    pub title: String,
+    pub numeric_count: usize,
+    pub numeric_sum: f64,
+}
+
+impl LineGenerator {
+    fn from_line(line: &ItemLine, schemas: &Schemas) -> Result<Self, String> {
+        match line.title.as_str() {
+            "Container" => ContainerLine::try_from_item_line(line, schemas)
+                .map(Self::Container)
+                .map_err(|error| error.to_string()),
+            "Button" => ButtonLine::try_from_item_line(line, schemas)
+                .map(Self::Button)
+                .map_err(|error| error.to_string()),
+            "TextField" => TextFieldLine::try_from_item_line(line, schemas)
+                .map(Self::TextField)
+                .map_err(|error| error.to_string()),
+            _ => {
+                let (numeric_count, numeric_sum) = collect_numeric_values(line);
+                Ok(Self::Unknown(UnknownLineData {
+                    title: line.title.clone(),
+                    numeric_count,
+                    numeric_sum,
+                }))
+            }
+        }
+    }
+
+    fn title(&self) -> &str {
+        match self {
+            Self::Container(_) => "Container",
+            Self::Button(_) => "Button",
+            Self::TextField(_) => "TextField",
+            Self::Unknown(data) => data.title.as_str(),
+        }
+    }
+
+    fn collect_numeric_values(&self) -> (usize, f64) {
+        match self {
+            Self::Container(container) => (
+                3,
+                container.width.value + container.height.value + container.padding.value as f64,
+            ),
+            Self::Button(_) => (0, 0.0),
+            Self::TextField(text_field) => (1, text_field.max_length as f64),
+            Self::Unknown(data) => (data.numeric_count, data.numeric_sum),
+        }
+    }
+}
 
 pub struct LineCalculationRequest {
     pub list_index: usize,
     pub list_name: String,
     pub line_index: usize,
     pub line: ItemLine,
+}
+
+impl LineCalculationRequest {
+    pub fn new(list_index: usize, list_name: String, line_index: usize, line: ItemLine) -> Self {
+        Self {
+            list_index,
+            list_name,
+            line_index,
+            line,
+        }
+    }
 }
 
 pub struct LineCalculationResult {
@@ -29,15 +97,31 @@ pub fn spawn_line_calculation_worker(
 
     thread::spawn(move || {
         while let Ok(request) = rx.recv() {
+            let generator = match LineGenerator::from_line(&request.line, &schemas) {
+                Ok(generator) => generator,
+                Err(error) => {
+                    let message = format!(
+                        "failed to build line generator title='{}': {error}",
+                        request.line.title
+                    );
+                    eprintln!("[domain-calc] {message}");
+                    let _ = result_sender.send(Err(message));
+                    continue;
+                }
+            };
+
             eprintln!(
                 "[domain-calc] start list=#{} '{}' line=#{} title='{}'",
-                request.list_index, request.list_name, request.line_index, request.line.title
+                request.list_index,
+                request.list_name,
+                request.line_index,
+                generator.title()
             );
 
-            if let Err(error) = calculate_line_by_title(&request.line, &schemas) {
+            if let Err(error) = calculate_line_by_generator(&generator) {
                 let message = format!(
                     "failed to calculate line title='{}': {error}",
-                    request.line.title
+                    generator.title()
                 );
                 eprintln!("[domain-calc] {message}");
                 let _ = result_sender.send(Err(message));
@@ -47,13 +131,13 @@ pub fn spawn_line_calculation_worker(
             // Simulate an expensive calculation job.
             thread::sleep(Duration::from_secs(5));
 
-            let (numeric_count, numeric_sum) = collect_numeric_values(&request.line);
+            let (numeric_count, numeric_sum) = generator.collect_numeric_values();
             eprintln!(
                 "[domain-calc] done list=#{} '{}' line=#{} title='{}' numeric_values={} numeric_sum={}",
                 request.list_index,
                 request.list_name,
                 request.line_index,
-                request.line.title,
+                generator.title(),
                 numeric_count,
                 numeric_sum
             );
@@ -74,72 +158,13 @@ pub fn spawn_line_calculation_worker(
     tx
 }
 
-fn calculate_line_by_title(line: &ItemLine, schemas: &Schemas) -> Result<(), String> {
-    match line.title.as_str() {
-        "Container" => calculate_container_line(line, schemas),
-        "Button" => calculate_button_line(line, schemas),
-        "TextField" => calculate_text_field_line(line, schemas),
+fn calculate_line_by_generator(generator: &LineGenerator) -> Result<(), String> {
+    match generator {
+        LineGenerator::Container(container) => container.calculate(),
+        LineGenerator::Button(button) => button.calculate(),
+        LineGenerator::TextField(text_field) => text_field.calculate(),
         _ => Ok(()),
     }
-}
-
-fn calculate_container_line(line: &ItemLine, schemas: &Schemas) -> Result<(), String> {
-    let container =
-        ContainerLine::try_from_item_line(line, schemas).map_err(|error| error.to_string())?;
-
-    print_container_data_all_units(&container);
-    Ok(())
-}
-
-fn calculate_button_line(line: &ItemLine, schemas: &Schemas) -> Result<(), String> {
-    let button = ButtonLine::try_from_item_line(line, schemas).map_err(|error| error.to_string())?;
-    eprintln!("[domain-calc][Button] label='{}'", button.label);
-    Ok(())
-}
-
-fn calculate_text_field_line(line: &ItemLine, schemas: &Schemas) -> Result<(), String> {
-    let text_field = TextFieldLine::try_from_item_line(line, schemas)
-        .map_err(|error| error.to_string())?;
-    eprintln!(
-        "[domain-calc][TextField] placeholder='{}' maxLength={} value='{}'",
-        text_field.placeholder, text_field.max_length, text_field.value
-    );
-    Ok(())
-}
-
-fn print_container_data_all_units(container: &ContainerLine) {
-    eprintln!(
-        "[domain-calc][Container] width: {}",
-        render_all_length_units(container.width.value, container.width.unit)
-    );
-    eprintln!(
-        "[domain-calc][Container] height: {}",
-        render_all_length_units(container.height.value, container.height.unit)
-    );
-    eprintln!(
-        "[domain-calc][Container] padding: {}",
-        render_all_length_units(container.padding.value as f64, container.padding.unit)
-    );
-}
-
-fn render_all_length_units(value: f64, from: LengthUnit) -> String {
-    all_length_units()
-        .iter()
-        .map(|to| {
-            let converted = LengthUnit::convert_value(value, from, *to);
-            format!("{converted:.4} {}", to.as_str())
-        })
-        .collect::<Vec<_>>()
-        .join(" | ")
-}
-
-fn all_length_units() -> [LengthUnit; 4] {
-    [
-        LengthUnit::Px,
-        LengthUnit::Em,
-        LengthUnit::Rem,
-        LengthUnit::Percent,
-    ]
 }
 
 fn collect_numeric_values(line: &ItemLine) -> (usize, f64) {
@@ -153,13 +178,10 @@ fn collect_numeric_values(line: &ItemLine) -> (usize, f64) {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        calculate_button_line, calculate_container_line, calculate_line_by_title,
-        calculate_text_field_line, collect_numeric_values, render_all_length_units,
-    };
+    use super::{calculate_line_by_generator, collect_numeric_values, LineGenerator};
     use crate::models::elements::Schemas;
     use crate::models::model::{ItemLine, ItemSet};
-    use crate::models::unit::length_unit::LengthUnit;
+    use crate::models::typed_lines::{ButtonLine, ContainerLine, TextFieldLine};
 
     #[test]
     fn collects_only_numeric_values() {
@@ -190,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn calculates_container_line_via_title_dispatch() {
+    fn calculates_container_line_via_generator_dispatch() {
         let schemas = Schemas::load_default();
         let line = ItemLine {
             title: "Container".to_string(),
@@ -213,12 +235,13 @@ mod tests {
             ],
         };
 
-        let result = calculate_line_by_title(&line, &schemas);
+        let generator = LineGenerator::from_line(&line, &schemas).unwrap();
+        let result = calculate_line_by_generator(&generator);
         assert!(result.is_ok());
     }
 
     #[test]
-    fn calculates_container_item_line_in_dedicated_function() {
+    fn calculates_container_item_line_via_struct_impl() {
         let schemas = Schemas::load_default();
         let line = ItemLine {
             title: "Container".to_string(),
@@ -241,21 +264,13 @@ mod tests {
             ],
         };
 
-        let result = calculate_container_line(&line, &schemas);
+        let container = ContainerLine::try_from_item_line(&line, &schemas).unwrap();
+        let result = container.calculate();
         assert!(result.is_ok());
     }
 
     #[test]
-    fn renders_all_length_units() {
-        let rendered = render_all_length_units(10.0, LengthUnit::Px);
-        assert!(rendered.contains("px"));
-        assert!(rendered.contains("em"));
-        assert!(rendered.contains("rem"));
-        assert!(rendered.contains("%"));
-    }
-
-    #[test]
-    fn calculates_button_item_line_in_dedicated_function() {
+    fn calculates_button_item_line_via_struct_impl() {
         let schemas = Schemas::load_default();
         let line = ItemLine {
             title: "Button".to_string(),
@@ -266,12 +281,13 @@ mod tests {
             }],
         };
 
-        let result = calculate_button_line(&line, &schemas);
+        let button = ButtonLine::try_from_item_line(&line, &schemas).unwrap();
+        let result = button.calculate();
         assert!(result.is_ok());
     }
 
     #[test]
-    fn calculates_text_field_item_line_in_dedicated_function() {
+    fn calculates_text_field_item_line_via_struct_impl() {
         let schemas = Schemas::load_default();
         let line = ItemLine {
             title: "TextField".to_string(),
@@ -294,7 +310,8 @@ mod tests {
             ],
         };
 
-        let result = calculate_text_field_line(&line, &schemas);
+        let text_field = TextFieldLine::try_from_item_line(&line, &schemas).unwrap();
+        let result = text_field.calculate();
         assert!(result.is_ok());
     }
 }

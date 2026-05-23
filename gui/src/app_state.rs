@@ -665,12 +665,7 @@ impl AppState {
             .map(|name| name.to_string())
             .unwrap_or_default();
 
-        let request = LineCalculationRequest {
-            list_index: list_idx,
-            list_name,
-            line_index: line_idx,
-            line,
-        };
+        let request = LineCalculationRequest::new(list_idx, list_name, line_idx, line);
 
         if let Err(error) = self.calc_sender.send(request) {
             eprintln!("failed to send line calculation request to domain: {error}");

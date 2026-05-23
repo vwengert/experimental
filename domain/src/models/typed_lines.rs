@@ -44,11 +44,36 @@ pub struct ContainerLine {
     pub padding: ValueWithUnit<i64, LengthUnit>,
 }
 
+impl ContainerLine {
+    pub fn calculate(&self) -> Result<(), String> {
+        eprintln!(
+            "[domain-calc][Container] width: {}",
+            render_all_length_units(self.width.value, self.width.unit)
+        );
+        eprintln!(
+            "[domain-calc][Container] height: {}",
+            render_all_length_units(self.height.value, self.height.unit)
+        );
+        eprintln!(
+            "[domain-calc][Container] padding: {}",
+            render_all_length_units(self.padding.value as f64, self.padding.unit)
+        );
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, ItemLineStruct)]
 #[item_line(element = "Button")]
 pub struct ButtonLine {
     #[item_field(ty = "Str")]
     pub label: String,
+}
+
+impl ButtonLine {
+    pub fn calculate(&self) -> Result<(), String> {
+        eprintln!("[domain-calc][Button] label='{}'", self.label);
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, ItemLineStruct)]
@@ -60,6 +85,36 @@ pub struct TextFieldLine {
     pub max_length: i64,
     #[item_field(ty = "Str")]
     pub value: String,
+}
+
+impl TextFieldLine {
+    pub fn calculate(&self) -> Result<(), String> {
+        eprintln!(
+            "[domain-calc][TextField] placeholder='{}' maxLength={} value='{}'",
+            self.placeholder, self.max_length, self.value
+        );
+        Ok(())
+    }
+}
+
+fn render_all_length_units(value: f64, from: LengthUnit) -> String {
+    all_length_units()
+        .iter()
+        .map(|to| {
+            let converted = LengthUnit::convert_value(value, from, *to);
+            format!("{converted:.4} {:?}", to)
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
+fn all_length_units() -> [LengthUnit; 4] {
+    [
+        LengthUnit::Px,
+        LengthUnit::Em,
+        LengthUnit::Rem,
+        LengthUnit::Percent,
+    ]
 }
 
 #[cfg(test)]
