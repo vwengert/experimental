@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use unit_enum_derive::ItemLineStruct;
 
 use crate::models::elements::ValueType;
@@ -10,7 +9,7 @@ use crate::utility::parse::{
     validate_field_without_unit,
 };
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ValueWithUnit<T, U> {
     pub value: T,
     pub unit: U,
@@ -34,7 +33,7 @@ impl<U: UnitConvertible> ValueWithUnit<i64, U> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ItemLineStruct)]
+#[derive(Debug, Clone, PartialEq, ItemLineStruct)]
 #[item_line(element = "Container")]
 pub struct ContainerLine {
     #[item_field(ty = "Float", unit = "length")]
@@ -45,14 +44,14 @@ pub struct ContainerLine {
     pub padding: ValueWithUnit<i64, LengthUnit>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ItemLineStruct)]
+#[derive(Debug, Clone, PartialEq, ItemLineStruct)]
 #[item_line(element = "Button")]
 pub struct ButtonLine {
     #[item_field(ty = "Str")]
     pub label: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ItemLineStruct)]
+#[derive(Debug, Clone, PartialEq, ItemLineStruct)]
 #[item_line(element = "TextField")]
 pub struct TextFieldLine {
     #[item_field(ty = "Str")]

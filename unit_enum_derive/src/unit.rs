@@ -1,169 +1,331 @@
-use proc_macro2::TokenStream;
-use quote::quote;
-use syn::{
-    Attribute, Data, DeriveInput, Expr, ExprLit, Fields, Lit, Meta, MetaList, MetaNameValue,
-};
+use proc_macro::{Delimiter, Group, TokenStream, TokenTree};
 
-pub fn expand_derive_unit_enum(input: DeriveInput) -> TokenStream {
-    let enum_name = input.ident;
-
-    let data_enum = match input.data {
-        Data::Enum(data) => data,
-        _ => {
-            return syn::Error::new_spanned(enum_name, "UnitEnum can only be derived for enums")
-                .to_compile_error()
-        }
+pub fn expand_derive_unit_enum(input: TokenStream) -> TokenStream {
+    let (enum_name, body) = match parse_enum_decl(input) {
+        Ok(parsed) => parsed,
+        Err(msg) => return compile_error(&msg),
     };
 
-    let mut as_str_arms = Vec::new();
-    let mut factor_arms = Vec::new();
-    let mut try_from_arms = Vec::new();
+    let variants = match parse_variants(body.stream()) {
+        Ok(value) => value,
+        Err(msg) => return compile_error(&msg),
+    };
 
-    for variant in data_enum.variants {
-        if !matches!(variant.fields, Fields::Unit) {
-            return syn::Error::new_spanned(variant, "UnitEnum supports only unit enum variants")
-                .to_compile_error();
-        }
+    let mut as_str_arms = String::new();
+    let mut factor_arms = String::new();
+    let mut try_from_arms = String::new();
 
-        let variant_ident = variant.ident;
-        let unit_meta = extract_unit_meta(&variant.attrs);
-        let unit_literal = unit_meta
-            .rename
-            .unwrap_or_else(|| variant_ident.to_string());
-        let unit_factor = unit_meta.factor.unwrap_or(1.0f64);
+    for variant in variants {
+        let unit_literal = variant.rename.unwrap_or_else(|| variant.name.clone());
+        let unit_factor = variant.factor.unwrap_or(1.0);
 
-        as_str_arms.push(quote! {
-            Self::#variant_ident => #unit_literal,
-        });
-
-        factor_arms.push(quote! {
-            Self::#variant_ident => #unit_factor,
-        });
-
-        try_from_arms.push(quote! {
-            #unit_literal => ::core::result::Result::Ok(Self::#variant_ident),
-        });
+        as_str_arms.push_str(&format!(
+            "Self::{} => {},",
+            variant.name,
+            string_lit(&unit_literal)
+        ));
+        factor_arms.push_str(&format!("Self::{} => {}f64,", variant.name, unit_factor));
+        try_from_arms.push_str(&format!(
+            "{} => ::core::result::Result::Ok(Self::{}),",
+            string_lit(&unit_literal),
+            variant.name
+        ));
     }
 
-    quote! {
-        impl #enum_name {
-            pub fn as_str(&self) -> &'static str {
-                match self {
-                    #(#as_str_arms)*
-                }
-            }
+    let expanded = format!(
+        "
+impl {enum_name} {{
+    pub fn as_str(&self) -> &'static str {{
+        match self {{
+            {as_str_arms}
+        }}
+    }}
 
-            pub fn factor(&self) -> f64 {
-                match self {
-                    #(#factor_arms)*
-                }
-            }
+    pub fn factor(&self) -> f64 {{
+        match self {{
+            {factor_arms}
+        }}
+    }}
 
-            pub fn convert_value(value: f64, from: Self, to: Self) -> f64 {
-                value * from.factor() / to.factor()
-            }
-        }
+    pub fn convert_value(value: f64, from: Self, to: Self) -> f64 {{
+        value * from.factor() / to.factor()
+    }}
+}}
 
-        impl ::core::convert::TryFrom<&str> for #enum_name {
-            type Error = ::std::string::String;
+impl ::core::convert::TryFrom<&str> for {enum_name} {{
+    type Error = ::std::string::String;
 
-            fn try_from(value: &str) -> ::core::result::Result<Self, Self::Error> {
-                match value {
-                    #(#try_from_arms)*
-                    _ => ::core::result::Result::Err(
-                        ::std::format!("Unsupported unit '{}'", value)
-                    ),
-                }
-            }
-        }
+    fn try_from(value: &str) -> ::core::result::Result<Self, Self::Error> {{
+        match value {{
+            {try_from_arms}
+            _ => ::core::result::Result::Err(::std::format!(\"Unsupported unit '{{}}'\", value)),
+        }}
+    }}
+}}
 
-        impl ::serde::Serialize for #enum_name {
-            fn serialize<S>(&self, serializer: S) -> ::core::result::Result<S::Ok, S::Error>
-            where
-                S: ::serde::Serializer,
-            {
-                serializer.serialize_str(self.as_str())
-            }
-        }
+impl UnitConvertible for {enum_name} {{
+    fn unit_factor(self) -> f64 {{
+        match self {{
+            {factor_arms}
+        }}
+    }}
+}}
+"
+    );
 
-        impl<'de> ::serde::Deserialize<'de> for #enum_name {
-            fn deserialize<D>(deserializer: D) -> ::core::result::Result<Self, D::Error>
-            where
-                D: ::serde::Deserializer<'de>,
-            {
-                let value = <::std::string::String as ::serde::Deserialize>::deserialize(deserializer)?;
-                Self::try_from(value.as_str()).map_err(::serde::de::Error::custom)
-            }
-        }
-
-        impl UnitConvertible for #enum_name {
-            fn unit_factor(self) -> f64 {
-                match self {
-                    #(#factor_arms)*
-                }
-            }
-        }
+    match expanded.parse() {
+        Ok(tokens) => tokens,
+        Err(_) => compile_error("Failed to generate UnitEnum implementation"),
     }
 }
 
 #[derive(Default)]
-struct UnitMeta {
+struct VariantMeta {
+    name: String,
     rename: Option<String>,
     factor: Option<f64>,
 }
 
-fn extract_unit_meta(attrs: &[Attribute]) -> UnitMeta {
-    let mut unit_meta = UnitMeta::default();
-
-    for attr in attrs {
-        if attr.path().is_ident("unit") {
-            if let Ok(meta_list) = attr.meta.require_list() {
-                apply_unit_list(meta_list, &mut unit_meta);
-            }
-        }
-    }
-
-    unit_meta
+#[derive(Default)]
+struct Attr {
+    name: String,
+    args: Vec<(String, String)>,
 }
 
-fn apply_unit_list(meta: &MetaList, out: &mut UnitMeta) {
-    let nested: syn::punctuated::Punctuated<Meta, syn::Token![,]> =
-        match meta.parse_args_with(syn::punctuated::Punctuated::parse_terminated) {
-            Ok(value) => value,
-            Err(_) => return,
-        };
+fn parse_enum_decl(input: TokenStream) -> Result<(String, Group), String> {
+    let tokens: Vec<TokenTree> = input.into_iter().collect();
+    let mut i = 0usize;
 
-    for node in nested {
-        if let Meta::NameValue(MetaNameValue { path, value, .. }) = node {
-            if path.is_ident("rename") {
-                if let Expr::Lit(ExprLit {
-                    lit: Lit::Str(lit_str),
-                    ..
-                }) = &value
-                {
-                    out.rename = Some(lit_str.value());
+    while i < tokens.len() {
+        if let TokenTree::Ident(ident) = &tokens[i] {
+            if ident.to_string() == "enum" {
+                if i + 1 >= tokens.len() {
+                    return Err("UnitEnum can only be derived for enums".to_string());
                 }
-            }
 
-            if path.is_ident("factor") {
-                if let Expr::Lit(ExprLit {
-                    lit: Lit::Float(lit_float),
-                    ..
-                }) = &value
-                {
-                    if let Ok(parsed) = lit_float.base10_parse::<f64>() {
-                        out.factor = Some(parsed);
+                let enum_name = match &tokens[i + 1] {
+                    TokenTree::Ident(name) => name.to_string(),
+                    _ => return Err("UnitEnum can only be derived for enums".to_string()),
+                };
+
+                let mut j = i + 2;
+                while j < tokens.len() {
+                    if let TokenTree::Group(group) = &tokens[j] {
+                        if group.delimiter() == Delimiter::Brace {
+                            return Ok((enum_name, group.clone()));
+                        }
                     }
-                } else if let Expr::Lit(ExprLit {
-                    lit: Lit::Int(lit_int),
-                    ..
-                }) = &value
-                {
-                    if let Ok(parsed) = lit_int.base10_parse::<f64>() {
-                        out.factor = Some(parsed);
-                    }
+                    j += 1;
                 }
             }
         }
+        i += 1;
     }
+
+    Err("UnitEnum can only be derived for enums".to_string())
+}
+
+fn parse_variants(stream: TokenStream) -> Result<Vec<VariantMeta>, String> {
+    let mut out = Vec::new();
+
+    for segment in split_by_top_level_comma(stream) {
+        if segment.is_empty() {
+            continue;
+        }
+
+        let (attrs, idx) = parse_attr_prefix(&segment)?;
+        if idx >= segment.len() {
+            continue;
+        }
+
+        let variant_name = match &segment[idx] {
+            TokenTree::Ident(ident) => ident.to_string(),
+            _ => continue,
+        };
+
+        if idx + 1 < segment.len() {
+            if let TokenTree::Group(_) = segment[idx + 1] {
+                return Err("UnitEnum supports only unit enum variants".to_string());
+            }
+        }
+
+        let mut variant = VariantMeta {
+            name: variant_name,
+            rename: None,
+            factor: None,
+        };
+
+        for attr in attrs {
+            if attr.name != "unit" {
+                continue;
+            }
+
+            for (key, value) in attr.args {
+                if key == "rename" {
+                    variant.rename = parse_string_literal(&value);
+                }
+                if key == "factor" {
+                    variant.factor = value.parse::<f64>().ok();
+                }
+            }
+        }
+
+        out.push(variant);
+    }
+
+    Ok(out)
+}
+
+fn parse_attr_prefix(tokens: &[TokenTree]) -> Result<(Vec<Attr>, usize), String> {
+    let mut attrs = Vec::new();
+    let mut i = 0usize;
+
+    while i + 1 < tokens.len() {
+        if !is_punct(&tokens[i], '#') {
+            break;
+        }
+
+        let group = match &tokens[i + 1] {
+            TokenTree::Group(group) if group.delimiter() == Delimiter::Bracket => group,
+            _ => return Err("Malformed attribute syntax".to_string()),
+        };
+
+        attrs.push(parse_attr(group)?);
+        i += 2;
+    }
+
+    Ok((attrs, i))
+}
+
+fn parse_attr(group: &Group) -> Result<Attr, String> {
+    let mut tokens: Vec<TokenTree> = group.stream().into_iter().collect();
+    if tokens.is_empty() {
+        return Err("Malformed attribute syntax".to_string());
+    }
+
+    let name = match tokens.remove(0) {
+        TokenTree::Ident(ident) => ident.to_string(),
+        _ => return Err("Malformed attribute syntax".to_string()),
+    };
+
+    let mut args = Vec::new();
+    if !tokens.is_empty() {
+        if tokens.len() != 1 {
+            return Err("Malformed attribute syntax".to_string());
+        }
+
+        let arg_group = match &tokens[0] {
+            TokenTree::Group(g) if g.delimiter() == Delimiter::Parenthesis => g,
+            _ => return Err("Malformed attribute syntax".to_string()),
+        };
+
+        args = parse_kv_args(arg_group.stream());
+    }
+
+    Ok(Attr { name, args })
+}
+
+fn parse_kv_args(stream: TokenStream) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+
+    for segment in split_by_top_level_comma(stream) {
+        if segment.len() < 3 {
+            continue;
+        }
+
+        let key = match &segment[0] {
+            TokenTree::Ident(ident) => ident.to_string(),
+            _ => continue,
+        };
+
+        if !is_punct(&segment[1], '=') {
+            continue;
+        }
+
+        let value = segment[2].to_string();
+        out.push((key, value));
+    }
+
+    out
+}
+
+fn parse_string_literal(raw: &str) -> Option<String> {
+    let text = raw.trim();
+    if !(text.starts_with('"') && text.ends_with('"')) {
+        return None;
+    }
+
+    let inner = &text[1..text.len() - 1];
+    let mut result = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            result.push(ch);
+            continue;
+        }
+
+        match chars.next() {
+            Some('"') => result.push('"'),
+            Some('\\') => result.push('\\'),
+            Some('n') => result.push('\n'),
+            Some('r') => result.push('\r'),
+            Some('t') => result.push('\t'),
+            Some(other) => {
+                result.push('\\');
+                result.push(other);
+            }
+            None => result.push('\\'),
+        }
+    }
+
+    Some(result)
+}
+
+fn split_by_top_level_comma(stream: TokenStream) -> Vec<Vec<TokenTree>> {
+    let mut parts = Vec::new();
+    let mut current = Vec::new();
+    let mut angle_depth = 0usize;
+
+    for token in stream {
+        if let TokenTree::Punct(p) = &token {
+            match p.as_char() {
+                '<' => angle_depth += 1,
+                '>' => {
+                    angle_depth = angle_depth.saturating_sub(1);
+                }
+                ',' if angle_depth == 0 => {
+                    parts.push(current);
+                    current = Vec::new();
+                    continue;
+                }
+                _ => {}
+            }
+        }
+
+        if is_punct(&token, ',') && angle_depth == 0 {
+            parts.push(current);
+            current = Vec::new();
+            continue;
+        }
+
+        current.push(token);
+    }
+
+    parts.push(current);
+    parts
+}
+
+fn is_punct(token: &TokenTree, ch: char) -> bool {
+    matches!(token, TokenTree::Punct(p) if p.as_char() == ch)
+}
+
+fn compile_error(message: &str) -> TokenStream {
+    let escaped = string_lit(message);
+    let src = format!("compile_error!({escaped});");
+    src.parse().unwrap_or_default()
+}
+
+fn string_lit(value: &str) -> String {
+    format!("{:?}", value)
 }
