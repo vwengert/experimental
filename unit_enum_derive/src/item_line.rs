@@ -16,11 +16,10 @@ pub fn expand_derive_item_line_struct(input: TokenStream) -> TokenStream {
 
     let mut validate_arms = String::new();
     let mut assign_arms = String::new();
-    let mut needs_length_group_check = false;
 
     for field in fields {
         let field_meta = field.meta;
-        let schema_name = field_meta.name.unwrap_or_else(|| field.name.clone());
+        let schema_name = string_lit(&field_meta.name.unwrap_or_else(|| field.name.clone()));
 
         let ty_token = match field_meta.ty.as_deref() {
             Some("Float") => "ValueType::Float",
@@ -39,32 +38,22 @@ pub fn expand_derive_item_line_struct(input: TokenStream) -> TokenStream {
         };
 
         let value_parser = match field_meta.ty.as_deref() {
-            Some("Float") => format!("parse_float_value(line, {})?", string_lit(&schema_name)),
-            Some("Int") => format!("parse_int_value(line, {})?", string_lit(&schema_name)),
-            Some("Str") => format!("parse_string_value(line, {})?", string_lit(&schema_name)),
+            Some("Float") => format!("parse_float_value(line, {})?", schema_name),
+            Some("Int") => format!("parse_int_value(line, {})?", schema_name),
+            Some("Str") => format!("parse_string_value(line, {})?", schema_name),
             _ => unreachable!(),
         };
 
         if let Some(unit_name) = field_meta.unit {
-            let unit_parser = match unit_name.as_str() {
-                "length" => {
-                    needs_length_group_check = true;
-                    format!(
-                        "parse_length_unit(line, schemas, {})?",
-                        string_lit(&schema_name)
-                    )
-                }
-                other => {
-                    return compile_error(&format!(
-                        "Unsupported unit group '{other}'. Currently only 'length' is supported"
-                    ));
-                }
-            };
+            let unit_parser = format!(
+                "crate::utility::parse::parse_{}_unit(line, schemas, {})?",
+                unit_name, schema_name
+            );
 
             validate_arms.push_str(&format!(
                 "validate_field(schema.field({}), {}, {}, {})?;",
-                string_lit(&schema_name),
-                string_lit(&schema_name),
+                schema_name,
+                schema_name,
                 ty_token,
                 string_lit(&unit_name)
             ));
@@ -76,20 +65,12 @@ pub fn expand_derive_item_line_struct(input: TokenStream) -> TokenStream {
         } else {
             validate_arms.push_str(&format!(
                 "validate_field_without_unit(schema.field({}), {}, {})?;",
-                string_lit(&schema_name),
-                string_lit(&schema_name),
-                ty_token
+                schema_name, schema_name, ty_token
             ));
 
             assign_arms.push_str(&format!("{}: {},", field.name, value_parser));
         }
     }
-
-    let unit_group_check = if needs_length_group_check {
-        "if !schemas.units.contains_key(\"length\") { return Err(ItemLineConversionError::MissingLengthUnitGroup); }".to_string()
-    } else {
-        String::new()
-    };
 
     let expanded = format!(
         "
@@ -103,7 +84,6 @@ impl {struct_name} {{
             .ok_or(ItemLineConversionError::MissingContainerSchema)?;
 
         {validate_arms}
-        {unit_group_check}
 
         if line.title != {element_name_lit} {{
             return Err(ItemLineConversionError::WrongElementType {{
@@ -121,7 +101,6 @@ impl {struct_name} {{
         struct_name = struct_name,
         element_name_lit = string_lit(&element_name),
         validate_arms = validate_arms,
-        unit_group_check = unit_group_check,
         assign_arms = assign_arms
     );
 
@@ -242,7 +221,6 @@ fn parse_fields(stream: TokenStream) -> Result<Vec<ParsedField>, String> {
             meta,
         });
     }
-
     Ok(out)
 }
 

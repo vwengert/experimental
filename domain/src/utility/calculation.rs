@@ -58,7 +58,7 @@ impl LineGenerator {
                 container.width.value + container.height.value + container.padding.value as f64,
             ),
             Self::Button(_) => (0, 0.0),
-            Self::TextField(text_field) => (1, text_field.max_length as f64),
+            Self::TextField(text_field) => (1, text_field.max_length.value as f64),
             Self::Unknown(data) => (data.numeric_count, data.numeric_sum),
         }
     }
@@ -300,7 +300,7 @@ mod tests {
                 ItemSet {
                     key: "maxLength".to_string(),
                     value: "100".to_string(),
-                    unit: String::new(),
+                    unit: "m".to_string(),
                 },
                 ItemSet {
                     key: "value".to_string(),

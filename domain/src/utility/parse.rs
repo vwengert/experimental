@@ -1,6 +1,7 @@
 use crate::models::elements::{FieldSpec, Schemas, ValueType};
 use crate::models::error::item_line_conversion_error::ItemLineConversionError;
 use crate::models::model::ItemLine;
+use crate::models::unit::distance_unit::DistanceUnit;
 use crate::models::unit::length_unit::LengthUnit;
 
 pub fn validate_field(
@@ -112,6 +113,34 @@ pub fn parse_length_unit(
 
     LengthUnit::try_from(item.unit.as_str()).map_err(|_| {
         ItemLineConversionError::UnsupportedLengthUnit {
+            unit: item.unit.clone(),
+        }
+    })
+}
+
+pub fn parse_distance_unit(
+    line: &ItemLine,
+    schemas: &Schemas,
+    field: &'static str,
+) -> Result<DistanceUnit, ItemLineConversionError> {
+    let item = line
+        .data
+        .iter()
+        .find(|item| item.key == field)
+        .ok_or(ItemLineConversionError::MissingValue { field })?;
+
+    let allowed_units = schemas
+        .units
+        .get("distance")
+        .ok_or(ItemLineConversionError::MissingDistanceUnitGroup)?;
+    if !allowed_units.iter().any(|unit| unit == &item.unit) {
+        return Err(ItemLineConversionError::UnitNotAllowedForDistance {
+            unit: item.unit.clone(),
+        });
+    }
+
+    DistanceUnit::try_from(item.unit.as_str()).map_err(|_| {
+        ItemLineConversionError::UnsupportedDistanceUnit {
             unit: item.unit.clone(),
         }
     })

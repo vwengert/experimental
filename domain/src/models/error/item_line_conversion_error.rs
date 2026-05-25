@@ -8,6 +8,8 @@ pub enum ItemLineConversionError {
     MissingContainerSchema,
     #[error("Length unit group was not found in lists config")]
     MissingLengthUnitGroup,
+    #[error("Distance unit group was not found in lists config")]
+    MissingDistanceUnitGroup,
     #[error("Schema field '{field}' is missing for Container")]
     SchemaFieldMissing { field: &'static str },
     #[error("Schema field '{field}' type mismatch. expected={expected:?}, found={found:?}")]
@@ -35,6 +37,10 @@ pub enum ItemLineConversionError {
     InvalidIntValue { field: &'static str, value: String },
     #[error("Unsupported length unit '{unit}'")]
     UnsupportedLengthUnit { unit: String },
+    #[error("Unsupported distance unit '{unit}'")]
+    UnsupportedDistanceUnit { unit: String },
     #[error("Unit '{unit}' is not allowed by 'length' config group")]
     UnitNotAllowedForLength { unit: String },
+    #[error("Unit '{unit}' is not allowed by 'distance' config group")]
+    UnitNotAllowedForDistance { unit: String },
 }

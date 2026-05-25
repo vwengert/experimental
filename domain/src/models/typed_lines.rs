@@ -2,10 +2,11 @@ use unit_enum_derive::ItemLineStruct;
 
 use crate::models::elements::ValueType;
 pub use crate::models::error::item_line_conversion_error::ItemLineConversionError;
+pub use crate::models::unit::distance_unit::DistanceUnit;
 pub use crate::models::unit::length_unit::LengthUnit;
 use crate::models::unit::UnitConvertible;
 use crate::utility::parse::{
-    parse_float_value, parse_int_value, parse_length_unit, parse_string_value, validate_field,
+    parse_float_value, parse_int_value, parse_string_value, validate_field,
     validate_field_without_unit,
 };
 
@@ -81,8 +82,8 @@ impl ButtonLine {
 pub struct TextFieldLine {
     #[item_field(ty = "Str")]
     pub placeholder: String,
-    #[item_field(name = "maxLength", ty = "Int")]
-    pub max_length: i64,
+    #[item_field(name = "maxLength", ty = "Int", unit = "distance")]
+    pub max_length: ValueWithUnit<i64, DistanceUnit>,
     #[item_field(ty = "Str")]
     pub value: String,
 }
@@ -90,8 +91,8 @@ pub struct TextFieldLine {
 impl TextFieldLine {
     pub fn calculate(&self) -> Result<(), String> {
         eprintln!(
-            "[domain-calc][TextField] placeholder='{}' maxLength={} value='{}'",
-            self.placeholder, self.max_length, self.value
+            "[domain-calc][TextField] placeholder='{}' maxLength={} {:?} value='{}'",
+            self.placeholder, self.max_length.value, self.max_length.unit, self.value
         );
         Ok(())
     }
@@ -255,7 +256,7 @@ mod tests {
                 ItemSet {
                     key: "maxLength".into(),
                     value: "120".into(),
-                    unit: String::new(),
+                    unit: "km".into(),
                 },
                 ItemSet {
                     key: "value".into(),
@@ -267,7 +268,8 @@ mod tests {
 
         let text_field = TextFieldLine::try_from_item_line(&line, &schemas).unwrap();
         assert_eq!(text_field.placeholder, "Your name");
-        assert_eq!(text_field.max_length, 120);
+        assert_eq!(text_field.max_length.value, 120);
+        assert_eq!(text_field.max_length.unit, DistanceUnit::Kilometer);
         assert_eq!(text_field.value, "Alice");
     }
 }

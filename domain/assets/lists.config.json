@@ -29,7 +29,8 @@
           {
             "name": "maxLength",
             "spec": {
-              "ty": "Int"
+              "ty": "Int",
+              "unit": "distance"
             }
           },
           {
