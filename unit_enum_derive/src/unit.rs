@@ -66,19 +66,14 @@ pub fn expand_derive_unit_enum(input: TokenStream) -> TokenStream {
     let mut try_from_arms = String::new();
 
     for variant in variants {
-        let unit_literal = variant.rename.unwrap_or_else(|| variant.name.clone());
+        let unit_literal = string_lit(&variant.rename.unwrap_or_else(|| variant.name.clone()));
         let unit_factor = variant.factor.unwrap_or(1.0);
 
-        as_str_arms.push_str(&format!(
-            "Self::{} => {},",
-            variant.name,
-            string_lit(&unit_literal)
-        ));
+        as_str_arms.push_str(&format!("Self::{} => {},", variant.name, unit_literal));
         factor_arms.push_str(&format!("Self::{} => {}f64,", variant.name, unit_factor));
         try_from_arms.push_str(&format!(
             "{} => ::core::result::Result::Ok(Self::{}),",
-            string_lit(&unit_literal),
-            variant.name
+            unit_literal, variant.name
         ));
     }
 

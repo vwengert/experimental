@@ -4,6 +4,36 @@ use crate::models::model::ItemLine;
 use crate::models::unit::distance_unit::DistanceUnit;
 use crate::models::unit::length_unit::LengthUnit;
 
+pub(crate) trait ParseFieldValue: Sized {
+    fn parse_field(field: &'static str, raw: &str) -> Result<Self, ItemLineConversionError>;
+}
+
+impl ParseFieldValue for f64 {
+    fn parse_field(field: &'static str, raw: &str) -> Result<Self, ItemLineConversionError> {
+        raw.parse::<f64>()
+            .map_err(|_| ItemLineConversionError::InvalidFloatValue {
+                field,
+                value: raw.to_string(),
+            })
+    }
+}
+
+impl ParseFieldValue for i64 {
+    fn parse_field(field: &'static str, raw: &str) -> Result<Self, ItemLineConversionError> {
+        raw.parse::<i64>()
+            .map_err(|_| ItemLineConversionError::InvalidIntValue {
+                field,
+                value: raw.to_string(),
+            })
+    }
+}
+
+impl ParseFieldValue for String {
+    fn parse_field(_field: &'static str, raw: &str) -> Result<Self, ItemLineConversionError> {
+        Ok(raw.to_string())
+    }
+}
+
 pub fn validate_field(
     field: Option<&FieldSpec>,
     field_name: &'static str,
@@ -57,37 +87,12 @@ pub fn validate_field_without_unit(
     Ok(())
 }
 
-pub fn parse_float_value(
+pub(crate) fn parse_value<T: ParseFieldValue>(
     line: &ItemLine,
     field: &'static str,
-) -> Result<f64, ItemLineConversionError> {
+) -> Result<T, ItemLineConversionError> {
     let value = find_value(line, field)?;
-    value
-        .parse::<f64>()
-        .map_err(|_| ItemLineConversionError::InvalidFloatValue {
-            field,
-            value: value.to_string(),
-        })
-}
-
-pub fn parse_int_value(
-    line: &ItemLine,
-    field: &'static str,
-) -> Result<i64, ItemLineConversionError> {
-    let value = find_value(line, field)?;
-    value
-        .parse::<i64>()
-        .map_err(|_| ItemLineConversionError::InvalidIntValue {
-            field,
-            value: value.to_string(),
-        })
-}
-
-pub fn parse_string_value(
-    line: &ItemLine,
-    field: &'static str,
-) -> Result<String, ItemLineConversionError> {
-    Ok(find_value(line, field)?.to_string())
+    T::parse_field(field, value)
 }
 
 pub fn parse_length_unit(

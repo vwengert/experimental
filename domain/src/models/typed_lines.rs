@@ -6,8 +6,7 @@ pub use crate::models::unit::distance_unit::DistanceUnit;
 pub use crate::models::unit::length_unit::LengthUnit;
 use crate::models::unit::UnitConvertible;
 use crate::utility::parse::{
-    parse_float_value, parse_int_value, parse_string_value, validate_field,
-    validate_field_without_unit,
+    validate_field, validate_field_without_unit,
 };
 
 #[derive(Debug, Clone, PartialEq)]

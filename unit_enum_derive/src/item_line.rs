@@ -5,6 +5,8 @@ use crate::shared::{
     split_by_top_level_comma, string_lit, strip_attr_prefix, Attr,
 };
 
+const ERR_NAMED_FIELDS_ONLY: &str = "ItemLineStruct supports only structs with named fields";
+
 struct ParsedField {
     name: String,
     meta: ItemFieldMeta,
@@ -99,18 +101,8 @@ pub fn expand_derive_item_line_struct(input: TokenStream) -> TokenStream {
             }
         };
 
-        let value_parser = match field_meta.ty.as_deref() {
-            Some("Float") => format!("parse_float_value(line, {})?", schema_name),
-            Some("Int") => format!("parse_int_value(line, {})?", schema_name),
-            Some("Str") => format!("parse_string_value(line, {})?", schema_name),
-            _ => unreachable!(),
-        };
-
         if let Some(unit_name) = field_meta.unit {
-            let unit_parser = format!(
-                "crate::utility::parse::parse_{}_unit(line, schemas, {})?",
-                unit_name, schema_name
-            );
+            let value_expr = format!("crate::utility::parse::parse_value(line, {})?", schema_name);
 
             validate_arms.push_str(&format!(
                 "validate_field(schema.field({}), {}, {}, {})?;",
@@ -121,16 +113,18 @@ pub fn expand_derive_item_line_struct(input: TokenStream) -> TokenStream {
             ));
 
             assign_arms.push_str(&format!(
-                "{}: ValueWithUnit {{ value: {}, unit: {} }},",
-                field.name, value_parser, unit_parser
+                "{}: ValueWithUnit {{ value: {}, unit: crate::utility::parse::parse_{}_unit(line, schemas, {})? }},",
+                field.name, value_expr, unit_name, schema_name
             ));
         } else {
+            let value_expr = format!("crate::utility::parse::parse_value(line, {})?", schema_name);
+
             validate_arms.push_str(&format!(
                 "validate_field_without_unit(schema.field({}), {}, {})?;",
                 schema_name, schema_name, ty_token
             ));
 
-            assign_arms.push_str(&format!("{}: {},", field.name, value_parser));
+            assign_arms.push_str(&format!("{}: {},", field.name, value_expr));
         }
     }
 
@@ -174,7 +168,7 @@ fn parse_struct_decl(input: TokenStream) -> Result<(Vec<Attr>, String, Group), S
         &tokens,
         "struct",
         "ItemLineStruct can only be derived for structs",
-        "ItemLineStruct supports only structs with named fields",
+        ERR_NAMED_FIELDS_ONLY,
     )?;
 
     let (attrs, _) = strip_attr_prefix(&tokens[..struct_index])?;
@@ -216,12 +210,12 @@ fn parse_fields(stream: TokenStream) -> Result<Vec<ParsedField>, String> {
 
         let field_name = match &rest[idx] {
             TokenTree::Ident(ident) => ident.to_string(),
-            _ => return Err("ItemLineStruct supports only structs with named fields".to_string()),
+            _ => return Err(ERR_NAMED_FIELDS_ONLY.to_string()),
         };
 
         idx += 1;
         if idx >= rest.len() || !is_punct(&rest[idx], ':') {
-            return Err("ItemLineStruct supports only structs with named fields".to_string());
+            return Err(ERR_NAMED_FIELDS_ONLY.to_string());
         }
 
         let meta = ItemFieldMeta::try_from(attrs.as_slice())?;
