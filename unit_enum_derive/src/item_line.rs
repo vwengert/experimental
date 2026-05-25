@@ -131,45 +131,40 @@ struct ParsedField {
 fn parse_struct_decl(input: TokenStream) -> Result<(Vec<Attr>, String, Group), String> {
     let tokens: Vec<TokenTree> = input.into_iter().collect();
     let mut attrs = Vec::new();
-    let mut i = 0usize;
+    let mut iter = tokens.iter();
 
-    while i < tokens.len() {
-        if i + 1 < tokens.len() && is_punct(&tokens[i], '#') {
-            let group = match &tokens[i + 1] {
+    while let Some(token) = iter.next() {
+        if is_punct(token, '#') {
+            let Some(next_token) = iter.next() else {
+                return Err("Malformed attribute syntax".to_string());
+            };
+
+            let group = match next_token {
                 TokenTree::Group(group) if group.delimiter() == Delimiter::Bracket => group,
                 _ => return Err("Malformed attribute syntax".to_string()),
             };
             attrs.push(parse_attr(group)?);
-            i += 2;
             continue;
         }
 
-        if let TokenTree::Ident(ident) = &tokens[i] {
+        if let TokenTree::Ident(ident) = token {
             if ident.to_string() == "struct" {
-                if i + 1 >= tokens.len() {
-                    return Err("ItemLineStruct can only be derived for structs".to_string());
-                }
-
-                let struct_name = match &tokens[i + 1] {
-                    TokenTree::Ident(name) => name.to_string(),
+                let struct_name = match iter.next() {
+                    Some(TokenTree::Ident(name)) => name.to_string(),
                     _ => return Err("ItemLineStruct can only be derived for structs".to_string()),
                 };
 
-                let mut j = i + 2;
-                while j < tokens.len() {
-                    if let TokenTree::Group(group) = &tokens[j] {
+                for token in iter.by_ref() {
+                    if let TokenTree::Group(group) = token {
                         if group.delimiter() == Delimiter::Brace {
                             return Ok((attrs, struct_name, group.clone()));
                         }
                     }
-                    j += 1;
                 }
 
                 return Err("ItemLineStruct supports only structs with named fields".to_string());
             }
         }
-
-        i += 1;
     }
 
     Err("ItemLineStruct can only be derived for structs".to_string())
