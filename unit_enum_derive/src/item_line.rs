@@ -1,9 +1,62 @@
 use proc_macro::{Delimiter, Group, TokenStream, TokenTree};
 
 use crate::shared::{
-    compile_error, is_punct, parse_attr, parse_attr_prefix, parse_named_decl, parse_string_literal,
-    split_by_top_level_comma, string_lit, Attr,
+    compile_error, find_attr, find_attrs, is_punct, optional_attr_value, parse_named_decl,
+    split_by_top_level_comma, string_lit, strip_attr_prefix, Attr,
 };
+
+struct ParsedField {
+    name: String,
+    meta: ItemFieldMeta,
+}
+
+#[derive(Default)]
+struct ItemLineMeta {
+    element: Option<String>,
+}
+
+#[derive(Default)]
+struct ItemFieldMeta {
+    name: Option<String>,
+    ty: Option<String>,
+    unit: Option<String>,
+}
+
+impl TryFrom<&[Attr]> for ItemLineMeta {
+    type Error = String;
+
+    fn try_from(attrs: &[Attr]) -> Result<Self, Self::Error> {
+        let mut out = ItemLineMeta::default();
+
+        if let Some(attr) = find_attr(attrs, "item_line") {
+            out.element = optional_attr_value(attr, "element")?;
+        }
+
+        Ok(out)
+    }
+}
+
+impl TryFrom<&[Attr]> for ItemFieldMeta {
+    type Error = String;
+
+    fn try_from(attrs: &[Attr]) -> Result<Self, Self::Error> {
+        let mut out = ItemFieldMeta::default();
+
+        for attr in find_attrs(attrs, "item_field") {
+            if let Some(value) = optional_attr_value(attr, "ty")? {
+                out.ty = Some(value);
+            }
+            if let Some(value) = optional_attr_value(attr, "name")? {
+                out.name = Some(value);
+            }
+            if let Some(value) = optional_attr_value(attr, "unit")? {
+                out.unit = Some(value);
+            }
+        }
+
+        Ok(out)
+    }
+}
 
 pub fn expand_derive_item_line_struct(input: TokenStream) -> TokenStream {
     let (outer_attrs, struct_name, body) = match parse_struct_decl(input) {
@@ -11,9 +64,12 @@ pub fn expand_derive_item_line_struct(input: TokenStream) -> TokenStream {
         Err(msg) => return compile_error(&msg),
     };
 
-    let element_name = string_lit(
-        &extract_item_line_element_name(&outer_attrs).unwrap_or_else(|| struct_name.clone()),
-    );
+    let line_meta = match ItemLineMeta::try_from(outer_attrs.as_slice()) {
+        Ok(meta) => meta,
+        Err(msg) => return compile_error(&msg),
+    };
+
+    let element_name = string_lit(&line_meta.element.unwrap_or_else(|| struct_name.clone()));
 
     let fields = match parse_fields(body.stream()) {
         Ok(value) => value,
@@ -112,18 +168,6 @@ impl {struct_name} {{
     }
 }
 
-#[derive(Default)]
-struct ItemFieldMeta {
-    name: Option<String>,
-    ty: Option<String>,
-    unit: Option<String>,
-}
-
-struct ParsedField {
-    name: String,
-    meta: ItemFieldMeta,
-}
-
 fn parse_struct_decl(input: TokenStream) -> Result<(Vec<Attr>, String, Group), String> {
     let tokens: Vec<TokenTree> = input.into_iter().collect();
     let (struct_index, struct_name, body) = parse_named_decl(
@@ -133,22 +177,7 @@ fn parse_struct_decl(input: TokenStream) -> Result<(Vec<Attr>, String, Group), S
         "ItemLineStruct supports only structs with named fields",
     )?;
 
-    let mut attrs = Vec::new();
-    let mut iter = tokens[..struct_index].iter();
-
-    while let Some(token) = iter.next() {
-        if is_punct(token, '#') {
-            let Some(next_token) = iter.next() else {
-                return Err("Malformed attribute syntax".to_string());
-            };
-
-            let group = match next_token {
-                TokenTree::Group(group) if group.delimiter() == Delimiter::Bracket => group,
-                _ => return Err("Malformed attribute syntax".to_string()),
-            };
-            attrs.push(parse_attr(group)?);
-        }
-    }
+    let (attrs, _) = strip_attr_prefix(&tokens[..struct_index])?;
 
     Ok((attrs, struct_name, body))
 }
@@ -161,16 +190,18 @@ fn parse_fields(stream: TokenStream) -> Result<Vec<ParsedField>, String> {
             continue;
         }
 
-        let (attrs, mut idx) = parse_attr_prefix(&segment)?;
-        if idx >= segment.len() {
+        let (attrs, rest) = strip_attr_prefix(&segment)?;
+        if rest.is_empty() {
             continue;
         }
 
-        if let TokenTree::Ident(ident) = &segment[idx] {
+        let mut idx = 0usize;
+
+        if let TokenTree::Ident(ident) = &rest[idx] {
             if ident.to_string() == "pub" {
                 idx += 1;
-                if idx < segment.len() {
-                    if let TokenTree::Group(group) = &segment[idx] {
+                if idx < rest.len() {
+                    if let TokenTree::Group(group) = &rest[idx] {
                         if group.delimiter() == Delimiter::Parenthesis {
                             idx += 1;
                         }
@@ -179,67 +210,25 @@ fn parse_fields(stream: TokenStream) -> Result<Vec<ParsedField>, String> {
             }
         }
 
-        if idx >= segment.len() {
+        if idx >= rest.len() {
             continue;
         }
 
-        let field_name = match &segment[idx] {
+        let field_name = match &rest[idx] {
             TokenTree::Ident(ident) => ident.to_string(),
             _ => return Err("ItemLineStruct supports only structs with named fields".to_string()),
         };
 
         idx += 1;
-        if idx >= segment.len() || !is_punct(&segment[idx], ':') {
+        if idx >= rest.len() || !is_punct(&rest[idx], ':') {
             return Err("ItemLineStruct supports only structs with named fields".to_string());
         }
 
-        let meta = extract_item_field_meta(&attrs);
+        let meta = ItemFieldMeta::try_from(attrs.as_slice())?;
         out.push(ParsedField {
             name: field_name,
             meta,
         });
     }
     Ok(out)
-}
-
-fn extract_item_line_element_name(attrs: &[Attr]) -> Option<String> {
-    let mut out = None;
-
-    for attr in attrs {
-        if attr.name != "item_line" {
-            continue;
-        }
-
-        for (key, value) in &attr.args {
-            if key == "element" {
-                out = parse_string_literal(value);
-            }
-        }
-    }
-
-    out
-}
-
-fn extract_item_field_meta(attrs: &[Attr]) -> ItemFieldMeta {
-    let mut out = ItemFieldMeta::default();
-
-    for attr in attrs {
-        if attr.name != "item_field" {
-            continue;
-        }
-
-        for (key, value) in &attr.args {
-            if key == "ty" {
-                out.ty = parse_string_literal(value);
-            }
-            if key == "name" {
-                out.name = parse_string_literal(value);
-            }
-            if key == "unit" {
-                out.unit = parse_string_literal(value);
-            }
-        }
-    }
-
-    out
 }

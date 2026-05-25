@@ -6,6 +6,53 @@ pub struct Attr {
     pub args: Vec<(String, String)>,
 }
 
+pub fn find_attr<'a>(attrs: &'a [Attr], name: &str) -> Option<&'a Attr> {
+    attrs.iter().find(|attr| attr.name == name)
+}
+
+pub fn find_attrs<'a>(attrs: &'a [Attr], name: &'a str) -> impl Iterator<Item = &'a Attr> + 'a {
+    attrs.iter().filter(move |attr| attr.name == name)
+}
+
+pub fn find_arg<'a>(attr: &'a Attr, key: &str) -> Option<&'a str> {
+    attr.args
+        .iter()
+        .find_map(|(k, v)| if k == key { Some(v.as_str()) } else { None })
+}
+
+pub trait AttrValueParse: Sized {
+    fn parse_from_attr_value(raw: &str, attr_name: &str, key: &str) -> Result<Self, String>;
+}
+
+impl AttrValueParse for String {
+    fn parse_from_attr_value(raw: &str, attr_name: &str, key: &str) -> Result<Self, String> {
+        parse_string_literal(raw).ok_or_else(|| {
+            format!(
+                "{} {} must be a string literal, got '{}'",
+                attr_name, key, raw
+            )
+        })
+    }
+}
+
+impl AttrValueParse for f64 {
+    fn parse_from_attr_value(raw: &str, attr_name: &str, key: &str) -> Result<Self, String> {
+        raw.parse::<f64>().map_err(|_| {
+            format!(
+                "{} {} must be a float literal, got '{}'",
+                attr_name, key, raw
+            )
+        })
+    }
+}
+
+pub fn optional_attr_value<T: AttrValueParse>(attr: &Attr, key: &str) -> Result<Option<T>, String> {
+    if let Some(raw) = find_arg(attr, key) {
+        return Ok(Some(T::parse_from_attr_value(raw, &attr.name, key)?));
+    }
+    Ok(None)
+}
+
 pub fn parse_named_decl(
     tokens: &[TokenTree],
     keyword: &str,
@@ -78,6 +125,11 @@ pub fn parse_attr_prefix(tokens: &[TokenTree]) -> Result<(Vec<Attr>, usize), Str
     }
 
     Ok((attrs, i))
+}
+
+pub fn strip_attr_prefix(tokens: &[TokenTree]) -> Result<(Vec<Attr>, &[TokenTree]), String> {
+    let (attrs, idx) = parse_attr_prefix(tokens)?;
+    Ok((attrs, &tokens[idx..]))
 }
 
 pub fn parse_attr(group: &Group) -> Result<Attr, String> {

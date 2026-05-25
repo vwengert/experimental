@@ -1,9 +1,54 @@
 use proc_macro::{Group, TokenStream, TokenTree};
 
 use crate::shared::{
-    compile_error, parse_attr_prefix, parse_named_decl, parse_string_literal,
-    split_by_top_level_comma, string_lit,
+    compile_error, find_attrs, optional_attr_value, parse_named_decl, split_by_top_level_comma,
+    string_lit, strip_attr_prefix, Attr,
 };
+
+#[derive(Default)]
+struct UnitVariantMeta {
+    rename: Option<String>,
+    factor: Option<f64>,
+}
+
+#[derive(Default)]
+struct VariantMeta {
+    name: String,
+    rename: Option<String>,
+    factor: Option<f64>,
+}
+
+impl TryFrom<(String, &[Attr])> for VariantMeta {
+    type Error = String;
+
+    fn try_from((name, attrs): (String, &[Attr])) -> Result<Self, Self::Error> {
+        let unit_meta = UnitVariantMeta::try_from(attrs)?;
+        Ok(Self {
+            name,
+            rename: unit_meta.rename,
+            factor: unit_meta.factor,
+        })
+    }
+}
+
+impl TryFrom<&[Attr]> for UnitVariantMeta {
+    type Error = String;
+
+    fn try_from(attrs: &[Attr]) -> Result<Self, Self::Error> {
+        let mut out = UnitVariantMeta::default();
+
+        for attr in find_attrs(attrs, "unit") {
+            if let Some(value) = optional_attr_value(attr, "rename")? {
+                out.rename = Some(value);
+            }
+            if let Some(value) = optional_attr_value(attr, "factor")? {
+                out.factor = Some(value);
+            }
+        }
+
+        Ok(out)
+    }
+}
 
 pub fn expand_derive_unit_enum(input: TokenStream) -> TokenStream {
     let (enum_name, body) = match parse_enum_decl(input) {
@@ -78,13 +123,6 @@ impl UnitConvertible for {enum_name} {{
     }
 }
 
-#[derive(Default)]
-struct VariantMeta {
-    name: String,
-    rename: Option<String>,
-    factor: Option<f64>,
-}
-
 fn parse_enum_decl(input: TokenStream) -> Result<(String, Group), String> {
     let tokens: Vec<TokenTree> = input.into_iter().collect();
     let (_, enum_name, body) = parse_named_decl(
@@ -104,44 +142,21 @@ fn parse_variants(stream: TokenStream) -> Result<Vec<VariantMeta>, String> {
             continue;
         }
 
-        let (attrs, idx) = parse_attr_prefix(&segment)?;
-        if idx >= segment.len() {
+        let (attrs, rest) = strip_attr_prefix(&segment)?;
+        if rest.is_empty() {
             continue;
         }
 
-        let variant_name = match &segment[idx] {
+        let variant_name = match &rest[0] {
             TokenTree::Ident(ident) => ident.to_string(),
             _ => continue,
         };
 
-        if idx + 1 < segment.len() {
-            if let TokenTree::Group(_) = segment[idx + 1] {
-                return Err("UnitEnum supports only unit enum variants".to_string());
-            }
+        if rest.len() > 1 && matches!(&rest[1], TokenTree::Group(_)) {
+            return Err("UnitEnum supports only unit enum variants".to_string());
         }
 
-        let mut variant = VariantMeta {
-            name: variant_name,
-            rename: None,
-            factor: None,
-        };
-
-        for attr in attrs {
-            if attr.name != "unit" {
-                continue;
-            }
-
-            for (key, value) in attr.args {
-                if key == "rename" {
-                    variant.rename = parse_string_literal(&value);
-                }
-                if key == "factor" {
-                    variant.factor = value.parse::<f64>().ok();
-                }
-            }
-        }
-
-        out.push(variant);
+        out.push(VariantMeta::try_from((variant_name, attrs.as_slice()))?);
     }
 
     Ok(out)
