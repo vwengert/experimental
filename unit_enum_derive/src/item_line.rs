@@ -1,13 +1,19 @@
 use proc_macro::{Delimiter, Group, TokenStream, TokenTree};
 
+use crate::shared::{
+    compile_error, is_punct, parse_attr, parse_attr_prefix, parse_named_decl, parse_string_literal,
+    split_by_top_level_comma, string_lit, Attr,
+};
+
 pub fn expand_derive_item_line_struct(input: TokenStream) -> TokenStream {
     let (outer_attrs, struct_name, body) = match parse_struct_decl(input) {
         Ok(parsed) => parsed,
         Err(msg) => return compile_error(&msg),
     };
 
-    let element_name =
-        extract_item_line_element_name(&outer_attrs).unwrap_or_else(|| struct_name.clone());
+    let element_name = string_lit(
+        &extract_item_line_element_name(&outer_attrs).unwrap_or_else(|| struct_name.clone()),
+    );
 
     let fields = match parse_fields(body.stream()) {
         Ok(value) => value,
@@ -80,14 +86,14 @@ impl {struct_name} {{
         schemas: &crate::models::elements::Schemas,
     ) -> Result<Self, crate::models::error::item_line_conversion_error::ItemLineConversionError> {{
         let schema = schemas
-            .schema_for({element_name_lit})
+            .schema_for({element_name})
             .ok_or(ItemLineConversionError::MissingContainerSchema)?;
 
         {validate_arms}
 
-        if line.title != {element_name_lit} {{
+        if line.title != {element_name} {{
             return Err(ItemLineConversionError::WrongElementType {{
-                expected: {element_name_lit},
+                expected: {element_name},
                 found: line.title.clone(),
             }});
         }}
@@ -97,23 +103,13 @@ impl {struct_name} {{
         }})
     }}
 }}
-",
-        struct_name = struct_name,
-        element_name_lit = string_lit(&element_name),
-        validate_arms = validate_arms,
-        assign_arms = assign_arms
+"
     );
 
     match expanded.parse() {
         Ok(tokens) => tokens,
         Err(_) => compile_error("Failed to generate ItemLineStruct implementation"),
     }
-}
-
-#[derive(Default)]
-struct Attr {
-    name: String,
-    args: Vec<(String, String)>,
 }
 
 #[derive(Default)]
@@ -130,8 +126,15 @@ struct ParsedField {
 
 fn parse_struct_decl(input: TokenStream) -> Result<(Vec<Attr>, String, Group), String> {
     let tokens: Vec<TokenTree> = input.into_iter().collect();
+    let (struct_index, struct_name, body) = parse_named_decl(
+        &tokens,
+        "struct",
+        "ItemLineStruct can only be derived for structs",
+        "ItemLineStruct supports only structs with named fields",
+    )?;
+
     let mut attrs = Vec::new();
-    let mut iter = tokens.iter();
+    let mut iter = tokens[..struct_index].iter();
 
     while let Some(token) = iter.next() {
         if is_punct(token, '#') {
@@ -144,30 +147,10 @@ fn parse_struct_decl(input: TokenStream) -> Result<(Vec<Attr>, String, Group), S
                 _ => return Err("Malformed attribute syntax".to_string()),
             };
             attrs.push(parse_attr(group)?);
-            continue;
-        }
-
-        if let TokenTree::Ident(ident) = token {
-            if ident.to_string() == "struct" {
-                let struct_name = match iter.next() {
-                    Some(TokenTree::Ident(name)) => name.to_string(),
-                    _ => return Err("ItemLineStruct can only be derived for structs".to_string()),
-                };
-
-                for token in iter.by_ref() {
-                    if let TokenTree::Group(group) = token {
-                        if group.delimiter() == Delimiter::Brace {
-                            return Ok((attrs, struct_name, group.clone()));
-                        }
-                    }
-                }
-
-                return Err("ItemLineStruct supports only structs with named fields".to_string());
-            }
         }
     }
 
-    Err("ItemLineStruct can only be derived for structs".to_string())
+    Ok((attrs, struct_name, body))
 }
 
 fn parse_fields(stream: TokenStream) -> Result<Vec<ParsedField>, String> {
@@ -219,79 +202,6 @@ fn parse_fields(stream: TokenStream) -> Result<Vec<ParsedField>, String> {
     Ok(out)
 }
 
-fn parse_attr_prefix(tokens: &[TokenTree]) -> Result<(Vec<Attr>, usize), String> {
-    let mut attrs = Vec::new();
-    let mut i = 0usize;
-
-    while i + 1 < tokens.len() {
-        if !is_punct(&tokens[i], '#') {
-            break;
-        }
-
-        let group = match &tokens[i + 1] {
-            TokenTree::Group(group) if group.delimiter() == Delimiter::Bracket => group,
-            _ => return Err("Malformed attribute syntax".to_string()),
-        };
-
-        attrs.push(parse_attr(group)?);
-        i += 2;
-    }
-
-    Ok((attrs, i))
-}
-
-fn parse_attr(group: &Group) -> Result<Attr, String> {
-    let mut tokens: Vec<TokenTree> = group.stream().into_iter().collect();
-    if tokens.is_empty() {
-        return Err("Malformed attribute syntax".to_string());
-    }
-
-    let name = match tokens.remove(0) {
-        TokenTree::Ident(ident) => ident.to_string(),
-        _ => return Err("Malformed attribute syntax".to_string()),
-    };
-
-    let mut args = Vec::new();
-    if !tokens.is_empty() {
-        if tokens.len() != 1 {
-            return Err("Malformed attribute syntax".to_string());
-        }
-
-        let arg_group = match &tokens[0] {
-            TokenTree::Group(g) if g.delimiter() == Delimiter::Parenthesis => g,
-            _ => return Err("Malformed attribute syntax".to_string()),
-        };
-
-        args = parse_kv_args(arg_group.stream());
-    }
-
-    Ok(Attr { name, args })
-}
-
-fn parse_kv_args(stream: TokenStream) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-
-    for segment in split_by_top_level_comma(stream) {
-        if segment.len() < 3 {
-            continue;
-        }
-
-        let key = match &segment[0] {
-            TokenTree::Ident(ident) => ident.to_string(),
-            _ => continue,
-        };
-
-        if !is_punct(&segment[1], '=') {
-            continue;
-        }
-
-        let value = segment[2].to_string();
-        out.push((key, value));
-    }
-
-    out
-}
-
 fn extract_item_line_element_name(attrs: &[Attr]) -> Option<String> {
     let mut out = None;
 
@@ -332,85 +242,4 @@ fn extract_item_field_meta(attrs: &[Attr]) -> ItemFieldMeta {
     }
 
     out
-}
-
-fn parse_string_literal(raw: &str) -> Option<String> {
-    let text = raw.trim();
-    if !(text.starts_with('"') && text.ends_with('"')) {
-        return None;
-    }
-
-    let inner = &text[1..text.len() - 1];
-    let mut result = String::with_capacity(inner.len());
-    let mut chars = inner.chars();
-
-    while let Some(ch) = chars.next() {
-        if ch != '\\' {
-            result.push(ch);
-            continue;
-        }
-
-        match chars.next() {
-            Some('"') => result.push('"'),
-            Some('\\') => result.push('\\'),
-            Some('n') => result.push('\n'),
-            Some('r') => result.push('\r'),
-            Some('t') => result.push('\t'),
-            Some(other) => {
-                result.push('\\');
-                result.push(other);
-            }
-            None => result.push('\\'),
-        }
-    }
-
-    Some(result)
-}
-
-fn split_by_top_level_comma(stream: TokenStream) -> Vec<Vec<TokenTree>> {
-    let mut parts = Vec::new();
-    let mut current = Vec::new();
-    let mut angle_depth = 0usize;
-
-    for token in stream {
-        if let TokenTree::Punct(p) = &token {
-            match p.as_char() {
-                '<' => angle_depth += 1,
-                '>' => {
-                    angle_depth = angle_depth.saturating_sub(1);
-                }
-                ',' if angle_depth == 0 => {
-                    parts.push(current);
-                    current = Vec::new();
-                    continue;
-                }
-                _ => {}
-            }
-        }
-
-        if is_punct(&token, ',') && angle_depth == 0 {
-            parts.push(current);
-            current = Vec::new();
-            continue;
-        }
-
-        current.push(token);
-    }
-
-    parts.push(current);
-    parts
-}
-
-fn is_punct(token: &TokenTree, ch: char) -> bool {
-    matches!(token, TokenTree::Punct(p) if p.as_char() == ch)
-}
-
-fn compile_error(message: &str) -> TokenStream {
-    let escaped = string_lit(message);
-    let src = format!("compile_error!({escaped});");
-    src.parse().unwrap_or_default()
-}
-
-fn string_lit(value: &str) -> String {
-    format!("{:?}", value)
 }

@@ -1,6 +1,7 @@
 use proc_macro::TokenStream;
 
 mod item_line;
+mod shared;
 mod unit;
 
 #[proc_macro_derive(UnitEnum, attributes(unit))]
