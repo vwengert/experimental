@@ -1,61 +1,92 @@
-use domain::dto::timesteps_dto::Timestep;
-// use domain::models::elements::Schemas;
-use domain::models::unified_model::UnifiedModel;
-use domain::utility::persistence;
+mod builder;
+mod config;
+mod decorator;
+mod expression;
+mod factory;
+mod token;
+
+use crate::expression::Expression;
+use builder::ExpressionBuilder;
+use config::CalculatorConfig;
+use factory::{NumberToken, ScientificFactory, StandardFactory, TokenFactory};
+use std::collections::HashMap;
+use token::{Function, Operator, Token};
+
+pub struct ScientificFunctionExpression {
+    operation: Box<dyn Fn(f64) -> f64>,
+    arg_expression: Box<dyn Expression>,
+    description: String,
+}
+impl ScientificFunctionExpression {
+    pub fn new_sin(arg: Box<dyn Expression>) -> Self {
+        let operation = Box::new(move |angle: f64| f64::sin(angle));
+        Self {
+            operation,
+            arg_expression: arg,
+            description: "sin".to_string(),
+        }
+    }
+}
+impl Expression for ScientificFunctionExpression {
+    fn evaluate(&self, variables: &HashMap<String, f64>) -> Result<f64, String> {
+        let arg_value = self.arg_expression.evaluate(variables)?;
+        Ok((self.operation)(arg_value))
+    }
+    fn to_string(&self) -> String {
+        format!("{} ({})", self.description, self.arg_expression.to_string())
+    }
+    fn precedence(&self) -> u8 {
+        self.arg_expression.precedence()
+    }
+}
 
 fn main() {
-    // let schemas = Schemas::load_default();
-    // println!("Default schemas loaded:");
-    // println!("{:#?}", schemas);
+    // Demonstrate Factory Methods
+    let num_token = Token::number(42.0);
+    let op_token = Token::operator(Operator::Add);
+    let func_token = Token::function(Function::Sin);
+    let var_token = Token::variable("x");
 
-    // // Test loading lists.json with embedded schemas
-    // println!("\n--- Testing lists.json with embedded schemas ---");
-    // match persistence::load_validated("lists.json") {
-    //     Ok(data) => {
-    //         println!("✓ Successfully loaded lists.json!");
-    //         println!("  Lists: {}", data.lists.len());
-    //     }
-    //     Err(e) => {
-    //         eprintln!("✗ Failed to load: ĵ}", e);
-    //     }
-    // }
+    println!(
+        "Created tokens: {:?}, {:?}, {:?}, {:?}",
+        num_token, op_token, func_token, var_token
+    );
 
-    let timesteps: Vec<Timestep> =
-        persistence::load::<Vec<Timestep>>("/workspaces/experimental/domain/assets/timesteps.json")
-            .unwrap();
+    // Demonstrate Factory from string
+    match Token::from_str("3.14") {
+        Ok(token) => println!("Parsed number: {:?}", token),
+        Err(e) => println!("Error: {}", e),
+    }
 
-    // Multiply the number of objects by 10 for each timestep
-    // for timestep in &mut timesteps {
-    //     let original_objects = timestep.objects.clone();
-    //     for _ in 0..9 {
-    //         timestep.objects.extend(original_objects.clone());
-    //     }
-    //     timestep.num_objects = timestep.objects.len();
-    // }
+    // Demonstrate Abstract Factory
+    let standard_factory = StandardFactory;
+    let sci_factory = ScientificFactory;
 
-    // Multiply the number of timesteps 500 times and adjust timestep numbers
-    // let original_timesteps = timesteps.clone();
-    // timesteps.clear();
-    // for i in 0..500 {
-    //     for timestep in &original_timesteps {
-    //         let mut new_timestep = timestep.clone();
-    //         new_timestep.timestep =
-    //             (i as f64 * 0.3 + timestep.timestep as f64 * 0.3).round() / 10.0;
-    //         timesteps.push(new_timestep);
-    //     }
-    // }
+    let standard_num = standard_factory.create_number("123").unwrap();
+    let sci_num = sci_factory.create_number("1.23e-4").unwrap();
 
-    // Save the updated timesteps back to the file using save_json utility
-    // persistence::save_json(
-    //     "/workspaces/experimental/domain/assets/timesteps.json",
-    //     &timesteps,
-    // )
-    // .unwrap();
+    println!("Standard number: {}", standard_num.format());
+    println!("Scientific number: {}", sci_num.format());
 
-    println!("Updated timesteps saved successfully.");
+    // Demonstrate Builder pattern
+    let expr = ExpressionBuilder::new()
+        .number(2.0)
+        .operator(Operator::Add)
+        .open_paren()
+        .number(3.0)
+        .operator(Operator::Multiply)
+        .number(4.0)
+        .close_paren()
+        .unwrap() // close_paren returns Result<Self, String>
+        .build()
+        .unwrap();
 
-    let unified_model: UnifiedModel = timesteps.into();
-    println!("Remodeling to Unified Model done");
-    let _timesteps: Vec<Timestep> = unified_model.into();
-    println!("Remodeling back to Timesteps done");
+    println!("Built expression: {:?}", expr);
+
+    // Demonstrate configuration (alternative to Singleton)
+    let default_config = CalculatorConfig::default();
+    let sci_config = CalculatorConfig::scientific();
+
+    println!("Default config: {:?}", default_config);
+    println!("Scientific config: {:?}", sci_config);
 }
