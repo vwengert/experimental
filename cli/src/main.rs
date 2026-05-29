@@ -10,7 +10,64 @@ use builder::ExpressionBuilder;
 use config::CalculatorConfig;
 use factory::{NumberToken, ScientificFactory, StandardFactory, TokenFactory};
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::SeqCst;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 use token::{Function, Operator, Token};
+
+pub struct Loop {
+    counter: i32,
+}
+
+impl Loop {
+    fn increment(&mut self) {
+        self.counter += 1;
+        println!("Incremented counter: {}", self.counter);
+    }
+}
+
+pub struct Main {
+    inner: Arc<Mutex<Loop>>,
+    is_running: Arc<AtomicBool>,
+}
+impl Main {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(Loop { counter: 0 })),
+            is_running: Arc::new(AtomicBool::new(false)),
+        }
+    }
+    pub fn start_timer(&self, delay: Duration) {
+        if self.is_running.swap(true, SeqCst) {
+            println!("Timer is already running");
+            return;
+        }
+
+        let inner_clone = Arc::clone(&self.inner);
+        let is_running_clone = Arc::clone(&self.is_running);
+        thread::spawn(move || {
+            while is_running_clone.load(SeqCst) {
+                thread::sleep(delay);
+                if !is_running_clone.load(SeqCst) {
+                    break;
+                }
+                if let Ok(mut inner) = inner_clone.lock() {
+                    inner.increment()
+                }
+            }
+            println!("Timer thread finished");
+        });
+    }
+
+    pub fn stop_timer(&self) {
+        self.is_running.store(false, SeqCst);
+    }
+    pub fn get_count(&self) -> i32 {
+        self.inner.lock().unwrap().counter
+    }
+}
 
 pub struct ScientificFunctionExpression {
     operation: Box<dyn Fn(f64) -> f64>,
@@ -89,4 +146,16 @@ fn main() {
 
     println!("Default config: {:?}", default_config);
     println!("Scientific config: {:?}", sci_config);
+
+    let my_loop = Main::new();
+    my_loop.start_timer(Duration::from_secs(1));
+
+    thread::sleep(Duration::from_secs(10));
+    my_loop.stop_timer();
+    println!("Loop counter after stop: {}", my_loop.get_count());
+    thread::sleep(Duration::from_secs(3));
+    my_loop.start_timer(Duration::from_millis(100));
+    thread::sleep(Duration::from_secs(12));
+    my_loop.stop_timer();
+    println!("Loop counter after stop: {}", my_loop.get_count());
 }
