@@ -3,7 +3,6 @@ import {
     Button,
     ComboBox,
     Palette,
-    Slider,
     ScrollView,
     VerticalBox,
     HorizontalBox,
@@ -34,6 +33,9 @@ export component GraphWindow inherits Window {
     in property <[GraphAxis]> graph-axes;
     in-out property <float> yaw-degrees: 32;
     in-out property <float> pitch-degrees: 22;
+    in-out property <float> view-zoom: 1.0;
+    in-out property <float> view-offset-x: 0;
+    in-out property <float> view-offset-y: 0;
     callback rotationChanged(float, float);
 
     changed yaw-degrees => {
@@ -69,56 +71,99 @@ export component GraphWindow inherits Window {
             Text {
                 x: 20px;
                 y: 48px;
-                text: "Rotate with yaw and pitch to inspect the graph from different directions.";
+                text: "Drag the sphere controller to rotate yaw and pitch together.";
                 color: #5b6472;
                 font-size: 13px;
             }
 
-            HorizontalBox {
-                x: 20px;
-                y: 76px;
-                width: parent.width - 40px;
-                height: 56px;
-                spacing: 12px;
+            sphere-control := Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: 70px;
+                width: 132px;
+                height: 132px;
+                border-radius: self.width / 2;
+                border-width: 1px;
+                border-color: #9fb3cc;
+                background: ta.has-hover ? #dce9f8 : #e6eef9;
 
-                VerticalBox {
-                    width: parent.width / 2 - 6px;
-                    spacing: 4px;
-
-                    Text {
-                        text: "Yaw " + root.yaw-degrees + "°";
-                        color: #334155;
-                    }
-
-                    Slider {
-                        minimum: 0;
-                        maximum: 360;
-                        value <=> root.yaw-degrees;
-                    }
+                Rectangle {
+                    x: 12px;
+                    y: 12px;
+                    width: parent.width - 24px;
+                    height: parent.height - 24px;
+                    border-radius: self.width / 2;
+                    border-width: 1px;
+                    border-color: #c7d3e3;
+                    background: #f6faff;
                 }
 
-                VerticalBox {
-                    width: parent.width / 2 - 6px;
-                    spacing: 4px;
+                Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: 8px;
+                    width: 1px;
+                    height: parent.height - 16px;
+                    background: #9fb3cc;
+                }
 
-                    Text {
-                        text: "Pitch " + root.pitch-degrees + "°";
-                        color: #334155;
-                    }
+                Rectangle {
+                    x: 8px;
+                    y: (parent.height - self.height) / 2;
+                    width: parent.width - 16px;
+                    height: 1px;
+                    background: #9fb3cc;
+                }
 
-                    Slider {
-                        minimum: -89;
-                        maximum: 89;
-                        value <=> root.pitch-degrees;
+                // Trackball handle derived from current yaw/pitch angles.
+                handle := Rectangle {
+                    private property <float> normalized-x: (Math.mod(root.yaw-degrees, 360) / 180) - 1;
+                    private property <float> normalized-y: 1 - (Math.mod(root.pitch-degrees, 360) / 180);
+                    width: 16px;
+                    height: 16px;
+                    border-radius: self.width / 2;
+                    border-width: 1px;
+                    border-color: #1e293b;
+                    background: #ffffff;
+                    x: (sphere-control.width / 2) + normalized-x * ((sphere-control.width / 2) - 14px) - (self.width / 2);
+                    y: (sphere-control.height / 2) + normalized-y * ((sphere-control.height / 2) - 14px) - (self.height / 2);
+                }
+
+                Text {
+                    x: -120px;
+                    y: 8px;
+                    width: 110px;
+                    horizontal-alignment: right;
+                    text: "Yaw " + Math.round(root.yaw-degrees) + "°";
+                    color: #334155;
+                    font-size: 12px;
+                }
+
+                Text {
+                    x: parent.width + 10px;
+                    y: 8px;
+                    width: 110px;
+                    text: "Pitch " + Math.round(root.pitch-degrees) + "°";
+                    color: #334155;
+                    font-size: 12px;
+                }
+
+                ta := TouchArea {
+                    mouse-cursor: ta.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+                    moved => {
+                        let cx = sphere-control.width / 2;
+                        let cy = sphere-control.height / 2;
+                        let dx = (ta.mouse-x - cx) / (sphere-control.width / 2);
+                        let dy = (ta.mouse-y - cy) / (sphere-control.height / 2);
+                        root.yaw-degrees = Math.mod(((dx + 1) * 180), 360);
+                        root.pitch-degrees = Math.mod(((1 - dy) * 180), 360);
                     }
                 }
             }
 
             plot-area := Rectangle {
                 x: 20px;
-                y: 146px;
+                y: 214px;
                 width: parent.width - 40px;
-                height: parent.height - 166px;
+                height: parent.height - 234px;
                 background: #fbfdff;
                 border-width: 1px;
                 border-color: #e5eaf1;
@@ -126,10 +171,10 @@ export component GraphWindow inherits Window {
                 clip: true;
 
                 for graph-axis in root.graph-axes: Path {
-                    x: 0px;
-                    y: 0px;
-                    width: parent.width;
-                    height: parent.height;
+                    x: ((plot-area.width * (1 - root.view-zoom)) / 2) + root.view-offset-x * 1px;
+                    y: ((plot-area.height * (1 - root.view-zoom)) / 2) + root.view-offset-y * 1px;
+                    width: parent.width * root.view-zoom;
+                    height: parent.height * root.view-zoom;
                     viewbox-width: plot-area.width / 1px;
                     viewbox-height: plot-area.height / 1px;
                     clip: true;
@@ -142,18 +187,18 @@ export component GraphWindow inherits Window {
                 }
 
                 for graph-axis in root.graph-axes: Text {
-                    x: graph-axis.label-x * 1px;
-                    y: graph-axis.label-y * 1px;
+                    x: (((graph-axis.label-x * 1px) - (plot-area.width / 2)) * root.view-zoom) + (plot-area.width / 2) + root.view-offset-x * 1px;
+                    y: (((graph-axis.label-y * 1px) - (plot-area.height / 2)) * root.view-zoom) + (plot-area.height / 2) + root.view-offset-y * 1px;
                     text: graph-axis.label;
                     color: graph-axis.axis == 0 ? #1d4ed8 : graph-axis.axis == 1 ? #b45309 : #047857;
                     font-weight: 700;
                 }
 
                 for graph-path in root.graph-paths: Path {
-                    x: 0px;
-                    y: 0px;
-                    width: parent.width;
-                    height: parent.height;
+                    x: ((plot-area.width * (1 - root.view-zoom)) / 2) + root.view-offset-x * 1px;
+                    y: ((plot-area.height * (1 - root.view-zoom)) / 2) + root.view-offset-y * 1px;
+                    width: parent.width * root.view-zoom;
+                    height: parent.height * root.view-zoom;
                     viewbox-width: plot-area.width / 1px;
                     viewbox-height: plot-area.height / 1px;
                     clip: true;
@@ -169,8 +214,8 @@ export component GraphWindow inherits Window {
                 for point in root.graph-points: Rectangle {
                     width: point.size * 1px;
                     height: point.size * 1px;
-                    x: point.x * 1px - (self.width / 2);
-                    y: point.y * 1px - (self.height / 2);
+                    x: (((point.x * 1px) - (plot-area.width / 2)) * root.view-zoom) + (plot-area.width / 2) + root.view-offset-x * 1px - (self.width / 2);
+                    y: (((point.y * 1px) - (plot-area.height / 2)) * root.view-zoom) + (plot-area.height / 2) + root.view-offset-y * 1px - (self.height / 2);
                     border-radius: self.width / 2;
                     border-width: 1px;
                     border-color: #ffffff;
@@ -187,6 +232,42 @@ export component GraphWindow inherits Window {
                     color: #64748b;
                     horizontal-alignment: center;
                     vertical-alignment: center;
+                }
+
+                navigation-touch := TouchArea {
+                    width: parent.width;
+                    height: parent.height;
+                    mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+                    private property <float> last-x: 0;
+                    private property <float> last-y: 0;
+
+                    changed pressed => {
+                        if (self.pressed) {
+                            self.last-x = self.mouse-x / 1px;
+                            self.last-y = self.mouse-y / 1px;
+                        }
+                    }
+
+                    moved => {
+                        let current-x = self.mouse-x / 1px;
+                        let current-y = self.mouse-y / 1px;
+                        root.view-offset-x += current-x - self.last-x;
+                        root.view-offset-y += current-y - self.last-y;
+                        self.last-x = current-x;
+                        self.last-y = current-y;
+                    }
+
+                    scroll-event(event) => {
+                        if (event.delta-y > 0px) {
+                            root.view-zoom = Math.min(4.0, root.view-zoom * 1.1);
+                            return accept;
+                        }
+                        if (event.delta-y < 0px) {
+                            root.view-zoom = Math.max(0.35, root.view-zoom * 0.9);
+                            return accept;
+                        }
+                        reject
+                    }
                 }
             }
         }

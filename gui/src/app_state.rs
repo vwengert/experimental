@@ -64,7 +64,7 @@ impl AppState {
 
     pub fn set_graph_rotation(&self, yaw_degrees: f32, pitch_degrees: f32) {
         *self.graph_yaw_degrees.borrow_mut() = yaw_degrees.rem_euclid(360.0);
-        *self.graph_pitch_degrees.borrow_mut() = pitch_degrees.clamp(-89.0, 89.0);
+        *self.graph_pitch_degrees.borrow_mut() = pitch_degrees.rem_euclid(360.0);
         self.rebuild_graph_points();
     }
 
