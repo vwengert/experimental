@@ -9,10 +9,12 @@ use domain::models::model::{ItemData, ItemLine, ItemList, ItemSet};
 use domain::utility::calculation::{LineCalculationRequest, LineCalculationResult};
 
 use crate::util::{
-    build_key_data_for_schema, build_unit_options, project_graph_paths, project_graph_points,
-    read_dir_entries, validate_value_str,
+    build_key_data_for_schema, build_unit_options, project_graph_axes, project_graph_paths,
+    project_graph_points, read_dir_entries, validate_value_str,
 };
-use crate::{Action, ActionType, AppWindow, GraphPath, GraphPoint, KeyData, LineItem, LineState};
+use crate::{
+    Action, ActionType, AppWindow, GraphAxis, GraphPath, GraphPoint, KeyData, LineItem, LineState,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -24,6 +26,7 @@ pub type KeyDataModelsForList = Rc<RefCell<Vec<KeyDataModel>>>;
 pub type AllKeyDataModels = Rc<RefCell<Vec<KeyDataModelsForList>>>;
 pub type GraphPointModel = Rc<VecModel<GraphPoint>>;
 pub type GraphPathModel = Rc<VecModel<GraphPath>>;
+pub type GraphAxisModel = Rc<VecModel<GraphAxis>>;
 pub type CalculationResults = Rc<RefCell<Vec<Vec<Option<LineCalculationResult>>>>>;
 pub type CalculationRevisions = Rc<RefCell<Vec<Vec<u64>>>>;
 
@@ -38,8 +41,11 @@ pub struct AppState {
     pub calc_result_receiver: RefCell<Receiver<Result<LineCalculationResult, String>>>,
     pub graph_points: GraphPointModel,
     pub graph_paths: GraphPathModel,
+    pub graph_axes: GraphAxisModel,
     pub calc_results: CalculationResults,
     pub calc_revisions: CalculationRevisions,
+    pub graph_yaw_degrees: RefCell<f32>,
+    pub graph_pitch_degrees: RefCell<f32>,
     pub app_weak: slint::Weak<AppWindow>,
 }
 
@@ -48,16 +54,34 @@ pub struct AppState {
 // ── AppState implementation ───────────────────────────────────────────────────
 
 impl AppState {
+    pub fn graph_yaw_degrees(&self) -> f32 {
+        *self.graph_yaw_degrees.borrow()
+    }
+
+    pub fn graph_pitch_degrees(&self) -> f32 {
+        *self.graph_pitch_degrees.borrow()
+    }
+
+    pub fn set_graph_rotation(&self, yaw_degrees: f32, pitch_degrees: f32) {
+        *self.graph_yaw_degrees.borrow_mut() = yaw_degrees.rem_euclid(360.0);
+        *self.graph_pitch_degrees.borrow_mut() = pitch_degrees.clamp(-89.0, 89.0);
+        self.rebuild_graph_points();
+    }
+
     fn rebuild_graph_points(&self) {
-        let (points, paths) = {
+        let (points, paths, axes) = {
             let results = self.calc_results.borrow();
+            let yaw_degrees = *self.graph_yaw_degrees.borrow();
+            let pitch_degrees = *self.graph_pitch_degrees.borrow();
             (
-                project_graph_points(&results),
-                project_graph_paths(&results),
+                project_graph_points(&results, yaw_degrees, pitch_degrees),
+                project_graph_paths(&results, yaw_degrees, pitch_degrees),
+                project_graph_axes(yaw_degrees, pitch_degrees),
             )
         };
         self.graph_points.set_vec(points);
         self.graph_paths.set_vec(paths);
+        self.graph_axes.set_vec(axes);
     }
 
     fn invalidate_line_result(&self, list_idx: usize, line_idx: usize) {

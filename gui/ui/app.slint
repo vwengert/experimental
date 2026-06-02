@@ -3,6 +3,7 @@ import {
     Button,
     ComboBox,
     Palette,
+    Slider,
     ScrollView,
     VerticalBox,
     HorizontalBox,
@@ -14,6 +15,7 @@ import {
     ActionType,
     Action,
     FileEntry,
+    GraphAxis,
     GraphPoint,
     GraphPath,
 } from "@components/structs.slint";
@@ -29,6 +31,18 @@ export component GraphWindow inherits Window {
 
     in property <[GraphPoint]> graph-points;
     in property <[GraphPath]> graph-paths;
+    in property <[GraphAxis]> graph-axes;
+    in-out property <float> yaw-degrees: 32;
+    in-out property <float> pitch-degrees: 22;
+    callback rotationChanged(float, float);
+
+    changed yaw-degrees => {
+        root.rotationChanged(root.yaw-degrees, root.pitch-degrees);
+    }
+
+    changed pitch-degrees => {
+        root.rotationChanged(root.yaw-degrees, root.pitch-degrees);
+    }
 
     Rectangle {
         background: #f3f6fb;
@@ -55,70 +69,83 @@ export component GraphWindow inherits Window {
             Text {
                 x: 20px;
                 y: 48px;
-                text: "Points are connected per list in line-index order.";
+                text: "Rotate with yaw and pitch to inspect the graph from different directions.";
                 color: #5b6472;
                 font-size: 13px;
             }
 
+            HorizontalBox {
+                x: 20px;
+                y: 76px;
+                width: parent.width - 40px;
+                height: 56px;
+                spacing: 12px;
+
+                VerticalBox {
+                    width: parent.width / 2 - 6px;
+                    spacing: 4px;
+
+                    Text {
+                        text: "Yaw " + root.yaw-degrees + "°";
+                        color: #334155;
+                    }
+
+                    Slider {
+                        minimum: 0;
+                        maximum: 360;
+                        value <=> root.yaw-degrees;
+                    }
+                }
+
+                VerticalBox {
+                    width: parent.width / 2 - 6px;
+                    spacing: 4px;
+
+                    Text {
+                        text: "Pitch " + root.pitch-degrees + "°";
+                        color: #334155;
+                    }
+
+                    Slider {
+                        minimum: -89;
+                        maximum: 89;
+                        value <=> root.pitch-degrees;
+                    }
+                }
+            }
+
             plot-area := Rectangle {
                 x: 20px;
-                y: 86px;
+                y: 146px;
                 width: parent.width - 40px;
-                height: parent.height - 106px;
+                height: parent.height - 166px;
                 background: #fbfdff;
                 border-width: 1px;
                 border-color: #e5eaf1;
                 border-radius: 10px;
                 clip: true;
 
-                for x-step in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]: Rectangle {
-                    x: 174px + x-step * 22px;
-                    y: 338px - x-step * 8.4px;
-                    width: 5px;
-                    height: 5px;
-                    background: #94a3b8;
-                    border-radius: 3px;
+                for graph-axis in root.graph-axes: Path {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                    viewbox-width: plot-area.width / 1px;
+                    viewbox-height: plot-area.height / 1px;
+                    clip: true;
+                    fill: transparent;
+                    stroke-width: 2px;
+                    stroke-line-cap: round;
+                    opacity: 0.35 + (graph-axis.depth / 3) * 0.25;
+                    stroke: graph-axis.axis == 0 ? #1d4ed8 : graph-axis.axis == 1 ? #b45309 : #047857;
+                    commands: graph-axis.commands;
                 }
 
-                for y-step in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]: Rectangle {
-                    x: 174px - y-step * 14px;
-                    y: 338px - y-step * 8.4px;
-                    width: 5px;
-                    height: 5px;
-                    background: #94a3b8;
-                    border-radius: 3px;
-                }
-
-                for z-step in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]: Rectangle {
-                    x: 174px;
-                    y: 338px - z-step * 21px;
-                    width: 5px;
-                    height: 5px;
-                    background: #64748b;
-                    border-radius: 3px;
-                }
-
-                Text {
-                    x: 392px;
-                    y: 236px;
-                    text: "X";
-                    color: #1d4ed8;
-                    font-weight: 700;
-                }
-
-                Text {
-                    x: 18px;
-                    y: 236px;
-                    text: "Y";
-                    color: #b45309;
-                    font-weight: 700;
-                }
-
-                Text {
-                    x: 186px;
-                    y: 108px;
-                    text: "Z";
-                    color: #047857;
+                for graph-axis in root.graph-axes: Text {
+                    x: graph-axis.label-x * 1px;
+                    y: graph-axis.label-y * 1px;
+                    text: graph-axis.label;
+                    color: graph-axis.axis == 0 ? #1d4ed8 : graph-axis.axis == 1 ? #b45309 : #047857;
                     font-weight: 700;
                 }
 

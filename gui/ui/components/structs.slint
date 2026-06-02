@@ -38,6 +38,15 @@ export struct GraphPath {
     series: int,
 }
 
+export struct GraphAxis {
+    commands: string,
+    label: string,
+    label-x: float,
+    label-y: float,
+    depth: float,
+    axis: int,
+}
+
 export enum ActionType {
     add-line,
     value-changed,

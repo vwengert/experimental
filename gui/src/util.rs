@@ -7,7 +7,7 @@ use slint::{ModelRc, SharedString, VecModel};
 use domain::models::elements::{ElementSchema, FieldSpec, ValueType};
 use domain::utility::calculation::LineCalculationResult;
 
-use crate::{FileEntry, GraphPath, GraphPoint, KeyData};
+use crate::{FileEntry, GraphAxis, GraphPath, GraphPoint, KeyData};
 
 #[derive(Clone)]
 struct ProjectedGraphPoint {
@@ -17,6 +17,13 @@ struct ProjectedGraphPoint {
     depth: f32,
     series: i32,
     line_index: usize,
+}
+
+#[derive(Clone)]
+struct ProjectedPosition {
+    x: f32,
+    y: f32,
+    depth: f32,
 }
 
 pub fn build_unit_options(
@@ -105,6 +112,8 @@ pub fn validate_value_str(value: &str, ty: ValueType) -> bool {
 
 fn project_graph_geometry(
     results: &[Vec<Option<LineCalculationResult>>],
+    yaw_degrees: f32,
+    pitch_degrees: f32,
 ) -> Vec<ProjectedGraphPoint> {
     let mut flattened: Vec<(usize, &LineCalculationResult)> = results
         .iter()
@@ -140,11 +149,28 @@ fn project_graph_geometry(
         .fold(f64::NEG_INFINITY, f64::max);
     let numeric_sum_range = (max_numeric_sum - min_numeric_sum).max(f64::EPSILON) as f32;
 
-    let origin_x = 176.0f32;
-    let origin_y = 340.0f32;
-    let x_basis = (220.0f32, -84.0f32);
-    let y_basis = (-140.0f32, -84.0f32);
-    let z_basis = (0.0f32, -210.0f32);
+    let origin_x = 370.0f32;
+    let origin_y = 240.0f32;
+    let yaw = yaw_degrees.to_radians();
+    let pitch = pitch_degrees.to_radians();
+    let sin_yaw = yaw.sin();
+    let cos_yaw = yaw.cos();
+    let sin_pitch = pitch.sin();
+    let cos_pitch = pitch.cos();
+
+    let project_position = |world_x: f32, world_y: f32, world_z: f32| {
+        let rotated_x = world_x * cos_yaw + world_z * sin_yaw;
+        let rotated_z = -world_x * sin_yaw + world_z * cos_yaw;
+        let rotated_y = world_y * cos_pitch - rotated_z * sin_pitch;
+        let camera_z = world_y * sin_pitch + rotated_z * cos_pitch;
+
+        let perspective = 1.0 / (camera_z + 3.2);
+        ProjectedPosition {
+            x: origin_x + rotated_x * 265.0 * perspective,
+            y: origin_y - rotated_y * 265.0 * perspective,
+            depth: camera_z + 1.5,
+        }
+    };
 
     let mut points: Vec<ProjectedGraphPoint> = flattened
         .drain(..)
@@ -165,15 +191,18 @@ fn project_graph_geometry(
                 0.5
             };
 
-            let x = origin_x + nx * x_basis.0 + ny * y_basis.0 + nz * z_basis.0;
-            let y = origin_y + nx * x_basis.1 + ny * y_basis.1 + nz * z_basis.1;
-            let depth = nx + ny + nz;
+            let world_x = nx * 2.0 - 1.0;
+            let world_y = ny * 2.0 - 1.0;
+            let world_z = nz * 2.0 - 1.0;
+
+            let projected = project_position(world_x, world_y, world_z);
+            let perspective = 1.0 / (projected.depth - 1.5 + 3.2);
 
             ProjectedGraphPoint {
-                x,
-                y,
-                size: 10.0 + ny * 8.0 + nz * 4.0,
-                depth,
+                x: projected.x,
+                y: projected.y,
+                size: (10.0 + ny * 6.0 + nz * 4.0) * (0.7 + perspective * 1.6),
+                depth: projected.depth,
                 series: list_idx as i32,
                 line_index: result.line_index,
             }
@@ -184,8 +213,69 @@ fn project_graph_geometry(
     points
 }
 
-pub fn project_graph_points(results: &[Vec<Option<LineCalculationResult>>]) -> Vec<GraphPoint> {
-    project_graph_geometry(results)
+pub fn project_graph_axes(yaw_degrees: f32, pitch_degrees: f32) -> Vec<GraphAxis> {
+    let origin_x = 370.0f32;
+    let origin_y = 240.0f32;
+    let yaw = yaw_degrees.to_radians();
+    let pitch = pitch_degrees.to_radians();
+    let sin_yaw = yaw.sin();
+    let cos_yaw = yaw.cos();
+    let sin_pitch = pitch.sin();
+    let cos_pitch = pitch.cos();
+
+    let project_position = |world_x: f32, world_y: f32, world_z: f32| {
+        let rotated_x = world_x * cos_yaw + world_z * sin_yaw;
+        let rotated_z = -world_x * sin_yaw + world_z * cos_yaw;
+        let rotated_y = world_y * cos_pitch - rotated_z * sin_pitch;
+        let camera_z = world_y * sin_pitch + rotated_z * cos_pitch;
+        let perspective = 1.0 / (camera_z + 3.2);
+
+        ProjectedPosition {
+            x: origin_x + rotated_x * 265.0 * perspective,
+            y: origin_y - rotated_y * 265.0 * perspective,
+            depth: camera_z + 1.5,
+        }
+    };
+
+    let axes = [
+        (0, "X", (0.0f32, 0.0f32, 0.0f32), (1.15f32, 0.0f32, 0.0f32)),
+        (1, "Y", (0.0f32, 0.0f32, 0.0f32), (0.0f32, 1.15f32, 0.0f32)),
+        (2, "Z", (0.0f32, 0.0f32, 0.0f32), (0.0f32, 0.0f32, 1.15f32)),
+    ];
+
+    let mut projected_axes: Vec<GraphAxis> = axes
+        .into_iter()
+        .map(|(axis, label, start, end)| {
+            let start = project_position(start.0, start.1, start.2);
+            let end = project_position(end.0, end.1, end.2);
+            let mut commands = String::new();
+            let _ = write!(
+                &mut commands,
+                "M {:.2} {:.2} L {:.2} {:.2}",
+                start.x, start.y, end.x, end.y
+            );
+
+            GraphAxis {
+                commands: commands.into(),
+                label: label.into(),
+                label_x: end.x + 8.0,
+                label_y: end.y - 8.0,
+                depth: (start.depth + end.depth) / 2.0,
+                axis,
+            }
+        })
+        .collect();
+
+    projected_axes.sort_by(|left, right| left.depth.total_cmp(&right.depth));
+    projected_axes
+}
+
+pub fn project_graph_points(
+    results: &[Vec<Option<LineCalculationResult>>],
+    yaw_degrees: f32,
+    pitch_degrees: f32,
+) -> Vec<GraphPoint> {
+    project_graph_geometry(results, yaw_degrees, pitch_degrees)
         .into_iter()
         .map(|point| GraphPoint {
             x: point.x,
@@ -197,8 +287,12 @@ pub fn project_graph_points(results: &[Vec<Option<LineCalculationResult>>]) -> V
         .collect()
 }
 
-pub fn project_graph_paths(results: &[Vec<Option<LineCalculationResult>>]) -> Vec<GraphPath> {
-    let projected = project_graph_geometry(results);
+pub fn project_graph_paths(
+    results: &[Vec<Option<LineCalculationResult>>],
+    yaw_degrees: f32,
+    pitch_degrees: f32,
+) -> Vec<GraphPath> {
+    let projected = project_graph_geometry(results, yaw_degrees, pitch_degrees);
     let series_count = projected
         .iter()
         .map(|point| point.series)
