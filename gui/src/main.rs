@@ -8,8 +8,8 @@ use std::time::Duration;
 mod app_state;
 mod util;
 use app_state::{
-    AllKeyDataModels, AppState, CalculationResults, CalculationRevisions, GraphPointModel,
-    KeyDataModel, KeyDataModelsForList, LineModel, ListModels,
+    AllKeyDataModels, AppState, CalculationResults, CalculationRevisions, GraphPathModel,
+    GraphPointModel, KeyDataModel, KeyDataModelsForList, LineModel, ListModels,
 };
 use util::read_dir_entries;
 
@@ -59,6 +59,7 @@ fn main() {
             .collect(),
     ));
     let graph_points: GraphPointModel = Rc::new(VecModel::default());
+    let graph_paths: GraphPathModel = Rc::new(VecModel::default());
     let calc_results: CalculationResults =
         Rc::new(RefCell::new((0..LIST_COUNT).map(|_| Vec::new()).collect()));
     let calc_revisions: CalculationRevisions =
@@ -81,6 +82,7 @@ fn main() {
         calc_sender,
         calc_result_receiver: RefCell::new(calc_result_receiver),
         graph_points: graph_points.clone(),
+        graph_paths: graph_paths.clone(),
         calc_results,
         calc_revisions,
         app_weak: app.as_weak(),
@@ -97,9 +99,11 @@ fn main() {
     });
 
     let graph_points_for_window = graph_points.clone();
+    let graph_paths_for_window = graph_paths.clone();
     app.on_openGraphWindow(move || {
         let window = GraphWindow::new().unwrap();
         window.set_graph_points(ModelRc::from(graph_points_for_window.clone()));
+        window.set_graph_paths(ModelRc::from(graph_paths_for_window.clone()));
         window.show().unwrap();
     });
 

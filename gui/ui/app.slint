@@ -15,6 +15,7 @@ import {
     Action,
     FileEntry,
     GraphPoint,
+    GraphPath,
 } from "@components/structs.slint";
 import { FileDialog } from "@components/file-dialog.slint";
 import { LineCard } from "@components/line-card.slint";
@@ -27,6 +28,7 @@ export component GraphWindow inherits Window {
     preferred-height: 640px;
 
     in property <[GraphPoint]> graph-points;
+    in property <[GraphPath]> graph-paths;
 
     Rectangle {
         background: #f3f6fb;
@@ -53,7 +55,7 @@ export component GraphWindow inherits Window {
             Text {
                 x: 20px;
                 y: 48px;
-                text: "Point size follows density, color groups points by list.";
+                text: "Points are connected per list in line-index order.";
                 color: #5b6472;
                 font-size: 13px;
             }
@@ -120,11 +122,28 @@ export component GraphWindow inherits Window {
                     font-weight: 700;
                 }
 
+                for graph-path in root.graph-paths: Path {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                    viewbox-width: plot-area.width / 1px;
+                    viewbox-height: plot-area.height / 1px;
+                    clip: true;
+                    fill: transparent;
+                    stroke-width: 2px;
+                    stroke-line-cap: round;
+                    stroke-line-join: round;
+                    opacity: 0.2 + (graph-path.depth / 3) * 0.35;
+                    stroke: Math.mod(graph-path.series, 5) == 0 ? #115e59 : Math.mod(graph-path.series, 5) == 1 ? #1d4ed8 : Math.mod(graph-path.series, 5) == 2 ? #9a3412 : Math.mod(graph-path.series, 5) == 3 ? #6d28d9 : #9f1239;
+                    commands: graph-path.commands;
+                }
+
                 for point in root.graph-points: Rectangle {
                     width: point.size * 1px;
                     height: point.size * 1px;
-                    x: plot-area.x + point.x * 1px - (self.width / 2);
-                    y: plot-area.y + point.y * 1px - (self.height / 2);
+                    x: point.x * 1px - (self.width / 2);
+                    y: point.y * 1px - (self.height / 2);
                     border-radius: self.width / 2;
                     border-width: 1px;
                     border-color: #ffffff;

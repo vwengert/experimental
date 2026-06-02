@@ -9,10 +9,10 @@ use domain::models::model::{ItemData, ItemLine, ItemList, ItemSet};
 use domain::utility::calculation::{LineCalculationRequest, LineCalculationResult};
 
 use crate::util::{
-    build_key_data_for_schema, build_unit_options, project_graph_points, read_dir_entries,
-    validate_value_str,
+    build_key_data_for_schema, build_unit_options, project_graph_paths, project_graph_points,
+    read_dir_entries, validate_value_str,
 };
-use crate::{Action, ActionType, AppWindow, GraphPoint, KeyData, LineItem, LineState};
+use crate::{Action, ActionType, AppWindow, GraphPath, GraphPoint, KeyData, LineItem, LineState};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -23,6 +23,7 @@ pub type KeyDataModel = Rc<VecModel<KeyData>>;
 pub type KeyDataModelsForList = Rc<RefCell<Vec<KeyDataModel>>>;
 pub type AllKeyDataModels = Rc<RefCell<Vec<KeyDataModelsForList>>>;
 pub type GraphPointModel = Rc<VecModel<GraphPoint>>;
+pub type GraphPathModel = Rc<VecModel<GraphPath>>;
 pub type CalculationResults = Rc<RefCell<Vec<Vec<Option<LineCalculationResult>>>>>;
 pub type CalculationRevisions = Rc<RefCell<Vec<Vec<u64>>>>;
 
@@ -36,6 +37,7 @@ pub struct AppState {
     pub calc_sender: Sender<LineCalculationRequest>,
     pub calc_result_receiver: RefCell<Receiver<Result<LineCalculationResult, String>>>,
     pub graph_points: GraphPointModel,
+    pub graph_paths: GraphPathModel,
     pub calc_results: CalculationResults,
     pub calc_revisions: CalculationRevisions,
     pub app_weak: slint::Weak<AppWindow>,
@@ -47,11 +49,15 @@ pub struct AppState {
 
 impl AppState {
     fn rebuild_graph_points(&self) {
-        let points = {
+        let (points, paths) = {
             let results = self.calc_results.borrow();
-            project_graph_points(&results)
+            (
+                project_graph_points(&results),
+                project_graph_paths(&results),
+            )
         };
         self.graph_points.set_vec(points);
+        self.graph_paths.set_vec(paths);
     }
 
     fn invalidate_line_result(&self, list_idx: usize, line_idx: usize) {

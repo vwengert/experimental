@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::rc::Rc;
 
 use slint::{ModelRc, SharedString, VecModel};
@@ -6,7 +7,17 @@ use slint::{ModelRc, SharedString, VecModel};
 use domain::models::elements::{ElementSchema, FieldSpec, ValueType};
 use domain::utility::calculation::LineCalculationResult;
 
-use crate::{FileEntry, GraphPoint, KeyData};
+use crate::{FileEntry, GraphPath, GraphPoint, KeyData};
+
+#[derive(Clone)]
+struct ProjectedGraphPoint {
+    x: f32,
+    y: f32,
+    size: f32,
+    depth: f32,
+    series: i32,
+    line_index: usize,
+}
 
 pub fn build_unit_options(
     spec: &FieldSpec,
@@ -92,7 +103,9 @@ pub fn validate_value_str(value: &str, ty: ValueType) -> bool {
     }
 }
 
-pub fn project_graph_points(results: &[Vec<Option<LineCalculationResult>>]) -> Vec<GraphPoint> {
+fn project_graph_geometry(
+    results: &[Vec<Option<LineCalculationResult>>],
+) -> Vec<ProjectedGraphPoint> {
     let mut flattened: Vec<(usize, &LineCalculationResult)> = results
         .iter()
         .enumerate()
@@ -133,7 +146,7 @@ pub fn project_graph_points(results: &[Vec<Option<LineCalculationResult>>]) -> V
     let y_basis = (-140.0f32, -84.0f32);
     let z_basis = (0.0f32, -210.0f32);
 
-    let mut points: Vec<GraphPoint> = flattened
+    let mut points: Vec<ProjectedGraphPoint> = flattened
         .drain(..)
         .map(|(list_idx, result)| {
             let nx = if max_line_index > 0.0 {
@@ -156,16 +169,76 @@ pub fn project_graph_points(results: &[Vec<Option<LineCalculationResult>>]) -> V
             let y = origin_y + nx * x_basis.1 + ny * y_basis.1 + nz * z_basis.1;
             let depth = nx + ny + nz;
 
-            GraphPoint {
+            ProjectedGraphPoint {
                 x,
                 y,
                 size: 10.0 + ny * 8.0 + nz * 4.0,
                 depth,
                 series: list_idx as i32,
+                line_index: result.line_index,
             }
         })
         .collect();
 
     points.sort_by(|left, right| left.depth.total_cmp(&right.depth));
     points
+}
+
+pub fn project_graph_points(results: &[Vec<Option<LineCalculationResult>>]) -> Vec<GraphPoint> {
+    project_graph_geometry(results)
+        .into_iter()
+        .map(|point| GraphPoint {
+            x: point.x,
+            y: point.y,
+            size: point.size,
+            depth: point.depth,
+            series: point.series,
+        })
+        .collect()
+}
+
+pub fn project_graph_paths(results: &[Vec<Option<LineCalculationResult>>]) -> Vec<GraphPath> {
+    let projected = project_graph_geometry(results);
+    let series_count = projected
+        .iter()
+        .map(|point| point.series)
+        .max()
+        .map(|value| value + 1)
+        .unwrap_or(0);
+
+    let mut grouped: Vec<Vec<ProjectedGraphPoint>> =
+        (0..series_count).map(|_| Vec::new()).collect();
+    for point in projected {
+        if let Some(points) = grouped.get_mut(point.series as usize) {
+            points.push(point);
+        }
+    }
+
+    let mut paths = Vec::new();
+    for points in &mut grouped {
+        points.sort_by_key(|point| point.line_index);
+
+        if points.len() < 2 {
+            continue;
+        }
+
+        let mut commands = String::new();
+        let first = &points[0];
+        let _ = write!(&mut commands, "M {:.2} {:.2}", first.x, first.y);
+
+        let mut depth_sum = first.depth;
+        for point in points.iter().skip(1) {
+            let _ = write!(&mut commands, " L {:.2} {:.2}", point.x, point.y);
+            depth_sum += point.depth;
+        }
+
+        paths.push(GraphPath {
+            commands: commands.into(),
+            depth: depth_sum / points.len() as f32,
+            series: first.series,
+        });
+    }
+
+    paths.sort_by(|left, right| left.depth.total_cmp(&right.depth));
+    paths
 }
