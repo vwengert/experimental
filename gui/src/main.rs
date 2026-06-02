@@ -8,7 +8,8 @@ use std::time::Duration;
 mod app_state;
 mod util;
 use app_state::{
-    AllKeyDataModels, AppState, KeyDataModel, KeyDataModelsForList, LineModel, ListModels,
+    AllKeyDataModels, AppState, CalculationResults, CalculationRevisions, GraphAxisModel,
+    GraphPathModel, GraphPointModel, KeyDataModel, KeyDataModelsForList, LineModel, ListModels,
 };
 use util::read_dir_entries;
 
@@ -57,6 +58,13 @@ fn main() {
             .map(|_| Rc::new(RefCell::new(Vec::<KeyDataModel>::new())) as KeyDataModelsForList)
             .collect(),
     ));
+    let graph_points: GraphPointModel = Rc::new(VecModel::default());
+    let graph_paths: GraphPathModel = Rc::new(VecModel::default());
+    let graph_axes: GraphAxisModel = Rc::new(VecModel::default());
+    let calc_results: CalculationResults =
+        Rc::new(RefCell::new((0..LIST_COUNT).map(|_| Vec::new()).collect()));
+    let calc_revisions: CalculationRevisions =
+        Rc::new(RefCell::new((0..LIST_COUNT).map(|_| Vec::new()).collect()));
 
     let active_list_idx: Rc<RefCell<usize>> = Rc::new(RefCell::new(0));
     let (calc_result_sender, calc_result_receiver) =
@@ -74,6 +82,13 @@ fn main() {
         list_names: list_names_model,
         calc_sender,
         calc_result_receiver: RefCell::new(calc_result_receiver),
+        graph_points: graph_points.clone(),
+        graph_paths: graph_paths.clone(),
+        graph_axes: graph_axes.clone(),
+        calc_results,
+        calc_revisions,
+        graph_yaw_degrees: RefCell::new(32.0),
+        graph_pitch_degrees: RefCell::new(22.0),
         app_weak: app.as_weak(),
     });
 
@@ -83,19 +98,30 @@ fn main() {
         poll_state.poll_calculation_results();
     });
 
+    let dispatch_state = state.clone();
     app.on_dispatch(move |action| {
-        state.handle_dispatch(action);
+        dispatch_state.handle_dispatch(action);
     });
 
-    app.on_openDataView(|| {
-        let dialog = DataView::new().unwrap();
-        dialog.show().unwrap();
-        let dialog_weak = dialog.as_weak();
-        dialog.on_closeDataView(move || {
-            if let Some(dialog) = dialog_weak.upgrade() {
-                dialog.hide().unwrap();
-            }
-        })
+    state.set_graph_rotation(state.graph_yaw_degrees(), state.graph_pitch_degrees());
+
+    let graph_window = GraphWindow::new().unwrap();
+    graph_window.set_graph_points(ModelRc::from(graph_points.clone()));
+    graph_window.set_graph_paths(ModelRc::from(graph_paths.clone()));
+    graph_window.set_graph_axes(ModelRc::from(graph_axes.clone()));
+    graph_window.set_yaw_degrees(state.graph_yaw_degrees());
+    graph_window.set_pitch_degrees(state.graph_pitch_degrees());
+
+    let graph_state = state.clone();
+    graph_window.on_rotationChanged(move |yaw_degrees, pitch_degrees| {
+        graph_state.set_graph_rotation(yaw_degrees, pitch_degrees);
+    });
+
+    let graph_window_weak = graph_window.as_weak();
+    app.on_openGraphWindow(move || {
+        if let Some(window) = graph_window_weak.upgrade() {
+            window.show().unwrap();
+        }
     });
 
     app.run().unwrap();

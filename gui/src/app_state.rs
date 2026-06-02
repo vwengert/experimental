@@ -9,9 +9,12 @@ use domain::models::model::{ItemData, ItemLine, ItemList, ItemSet};
 use domain::utility::calculation::{LineCalculationRequest, LineCalculationResult};
 
 use crate::util::{
-    build_key_data_for_schema, build_unit_options, read_dir_entries, validate_value_str,
+    build_key_data_for_schema, build_unit_options, project_graph_axes, project_graph_paths,
+    project_graph_points, read_dir_entries, validate_value_str,
 };
-use crate::{Action, ActionType, AppWindow, KeyData, LineItem, LineState};
+use crate::{
+    Action, ActionType, AppWindow, GraphAxis, GraphPath, GraphPoint, KeyData, LineItem, LineState,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -21,6 +24,11 @@ pub type ListModels = Rc<RefCell<Vec<LineModel>>>;
 pub type KeyDataModel = Rc<VecModel<KeyData>>;
 pub type KeyDataModelsForList = Rc<RefCell<Vec<KeyDataModel>>>;
 pub type AllKeyDataModels = Rc<RefCell<Vec<KeyDataModelsForList>>>;
+pub type GraphPointModel = Rc<VecModel<GraphPoint>>;
+pub type GraphPathModel = Rc<VecModel<GraphPath>>;
+pub type GraphAxisModel = Rc<VecModel<GraphAxis>>;
+pub type CalculationResults = Rc<RefCell<Vec<Vec<Option<LineCalculationResult>>>>>;
+pub type CalculationRevisions = Rc<RefCell<Vec<Vec<u64>>>>;
 
 /// All shared application state passed to dispatch handlers.
 pub struct AppState {
@@ -31,6 +39,13 @@ pub struct AppState {
     pub list_names: Rc<VecModel<SharedString>>,
     pub calc_sender: Sender<LineCalculationRequest>,
     pub calc_result_receiver: RefCell<Receiver<Result<LineCalculationResult, String>>>,
+    pub graph_points: GraphPointModel,
+    pub graph_paths: GraphPathModel,
+    pub graph_axes: GraphAxisModel,
+    pub calc_results: CalculationResults,
+    pub calc_revisions: CalculationRevisions,
+    pub graph_yaw_degrees: RefCell<f32>,
+    pub graph_pitch_degrees: RefCell<f32>,
     pub app_weak: slint::Weak<AppWindow>,
 }
 
@@ -39,6 +54,79 @@ pub struct AppState {
 // ── AppState implementation ───────────────────────────────────────────────────
 
 impl AppState {
+    pub fn graph_yaw_degrees(&self) -> f32 {
+        *self.graph_yaw_degrees.borrow()
+    }
+
+    pub fn graph_pitch_degrees(&self) -> f32 {
+        *self.graph_pitch_degrees.borrow()
+    }
+
+    pub fn set_graph_rotation(&self, yaw_degrees: f32, pitch_degrees: f32) {
+        *self.graph_yaw_degrees.borrow_mut() = yaw_degrees.rem_euclid(360.0);
+        *self.graph_pitch_degrees.borrow_mut() = pitch_degrees.rem_euclid(360.0);
+        self.rebuild_graph_points();
+    }
+
+    fn rebuild_graph_points(&self) {
+        let (points, paths, axes) = {
+            let results = self.calc_results.borrow();
+            let yaw_degrees = *self.graph_yaw_degrees.borrow();
+            let pitch_degrees = *self.graph_pitch_degrees.borrow();
+            (
+                project_graph_points(&results, yaw_degrees, pitch_degrees),
+                project_graph_paths(&results, yaw_degrees, pitch_degrees),
+                project_graph_axes(yaw_degrees, pitch_degrees),
+            )
+        };
+        self.graph_points.set_vec(points);
+        self.graph_paths.set_vec(paths);
+        self.graph_axes.set_vec(axes);
+    }
+
+    fn invalidate_line_result(&self, list_idx: usize, line_idx: usize) {
+        {
+            let mut revisions = self.calc_revisions.borrow_mut();
+            let Some(list_revisions) = revisions.get_mut(list_idx) else {
+                return;
+            };
+            let Some(revision) = list_revisions.get_mut(line_idx) else {
+                return;
+            };
+            *revision = revision.saturating_add(1);
+        }
+
+        {
+            let mut results = self.calc_results.borrow_mut();
+            let Some(list_results) = results.get_mut(list_idx) else {
+                return;
+            };
+            if let Some(result) = list_results.get_mut(line_idx) {
+                *result = None;
+            }
+        }
+
+        self.rebuild_graph_points();
+    }
+
+    fn current_revision(&self, list_idx: usize, line_idx: usize) -> Option<u64> {
+        self.calc_revisions
+            .borrow()
+            .get(list_idx)
+            .and_then(|list_revisions| list_revisions.get(line_idx).copied())
+    }
+
+    fn store_line_result(&self, result: LineCalculationResult) {
+        let mut results = self.calc_results.borrow_mut();
+        let Some(list_results) = results.get_mut(result.list_index) else {
+            return;
+        };
+        let Some(slot) = list_results.get_mut(result.line_index) else {
+            return;
+        };
+        *slot = Some(result);
+    }
+
     fn validate_key_data_value(
         &self,
         schema: Option<&domain::models::elements::ElementSchema>,
@@ -196,6 +284,8 @@ impl AppState {
             let key_data_vec = Rc::new(VecModel::from(key_data));
             let key_data_model_rc = ModelRc::from(key_data_vec.clone());
             key_data_models.borrow_mut().push(key_data_vec);
+            self.calc_results.borrow_mut()[active].push(None);
+            self.calc_revisions.borrow_mut()[active].push(0);
 
             lines_model.push(LineItem {
                 title: action.schema_name.clone(),
@@ -219,6 +309,7 @@ impl AppState {
                 key_data_model.set_row_data(pi, key_data);
             }
             self.validate_line_model(&lines_model, key_data_model, li, false);
+            self.invalidate_line_result(active, li);
         }
     }
 
@@ -234,6 +325,7 @@ impl AppState {
                 key_data.unit = action.new_value.clone();
                 key_data_model.set_row_data(pi, key_data);
             }
+            self.invalidate_line_result(active, li);
         }
     }
 
@@ -269,6 +361,7 @@ impl AppState {
                 line.state = LineState::Invalid;
                 lines_model.set_row_data(li, line);
             }
+            self.invalidate_line_result(active, li);
         }
     }
 
@@ -284,6 +377,9 @@ impl AppState {
             if li < borrowed.len() {
                 borrowed.remove(li);
             }
+            self.calc_results.borrow_mut()[active].remove(li);
+            self.calc_revisions.borrow_mut()[active].remove(li);
+            self.rebuild_graph_points();
         }
     }
 
@@ -307,6 +403,8 @@ impl AppState {
         self.all_key_data_models
             .borrow_mut()
             .push(Rc::new(RefCell::new(Vec::new())));
+        self.calc_results.borrow_mut().push(Vec::new());
+        self.calc_revisions.borrow_mut().push(Vec::new());
         self.list_names
             .push(SharedString::from(format!("list {count}").as_str()));
         let new_idx = count;
@@ -324,6 +422,8 @@ impl AppState {
         }
         self.list_models.borrow_mut().remove(idx);
         self.all_key_data_models.borrow_mut().remove(idx);
+        self.calc_results.borrow_mut().remove(idx);
+        self.calc_revisions.borrow_mut().remove(idx);
         self.list_names.remove(idx);
         let current = *self.active_list_idx.borrow();
         let new_active = if current >= idx && current > 0 {
@@ -332,6 +432,7 @@ impl AppState {
             current
         };
         self.set_lines_model(new_active);
+        self.rebuild_graph_points();
     }
 
     pub fn handle_navigate_dir(&self, action: &Action) {
@@ -475,6 +576,16 @@ impl AppState {
 
         *self.list_models.borrow_mut() = new_list_models;
         *self.all_key_data_models.borrow_mut() = new_key_data_models;
+        *self.calc_results.borrow_mut() = item_data
+            .lists
+            .iter()
+            .map(|item_list| vec![None; item_list.lines.len()])
+            .collect();
+        *self.calc_revisions.borrow_mut() = item_data
+            .lists
+            .iter()
+            .map(|item_list| vec![0; item_list.lines.len()])
+            .collect();
 
         while self.list_names.row_count() > 0 {
             self.list_names.remove(0);
@@ -491,6 +602,7 @@ impl AppState {
             app.set_lines(ModelRc::from(first_model));
             app.set_is_dirty(false);
         }
+        self.rebuild_graph_points();
     }
 
     pub fn handle_exit(&self) {
@@ -665,7 +777,12 @@ impl AppState {
             .map(|name| name.to_string())
             .unwrap_or_default();
 
-        let request = LineCalculationRequest::new(list_idx, list_name, line_idx, line);
+        let Some(request_revision) = self.current_revision(list_idx, line_idx) else {
+            return;
+        };
+
+        let request =
+            LineCalculationRequest::new(list_idx, list_name, line_idx, request_revision, line);
 
         if let Err(error) = self.calc_sender.send(request) {
             eprintln!("failed to send line calculation request to domain: {error}");
@@ -679,10 +796,19 @@ impl AppState {
         while let Ok(result) = receiver.try_recv() {
             match result {
                 Ok(line_result) => {
+                    let is_current = self
+                        .current_revision(line_result.list_index, line_result.line_index)
+                        .map(|revision| revision == line_result.request_revision)
+                        .unwrap_or(false);
+                    if !is_current {
+                        continue;
+                    }
                     eprintln!(
                         "[gui] Received result: list_index={}, line_index={}, numeric_count={}, numeric_sum={}",
                         line_result.list_index, line_result.line_index, line_result.numeric_count, line_result.numeric_sum
                     );
+                    self.store_line_result(line_result.clone());
+                    self.rebuild_graph_points();
                     self.set_line_calc_state(line_result.list_index, line_result.line_index, 2);
                 }
                 Err(error_message) => {

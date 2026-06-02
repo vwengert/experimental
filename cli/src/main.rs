@@ -1,61 +1,95 @@
-use domain::dto::timesteps_dto::Timestep;
-// use domain::models::elements::Schemas;
-use domain::models::unified_model::UnifiedModel;
-use domain::utility::persistence;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
+#[derive(Debug, Clone)]
+pub enum CalculatorEvent {
+    VariableChanged(String, f64),
+    ResultCalculated(f64, String),
+    ModeChanged(String),
+    Error(String),
+}
+
+pub trait Observer: Send + Sync {
+    fn update(&self, event: &CalculatorEvent);
+}
+pub trait Subject {
+    fn attach(&mut self, observer: Box<dyn Observer>) -> usize;
+    fn detach(&mut self, observer_id: usize);
+    fn notify(&self, event: &CalculatorEvent);
+}
+
+pub struct Observable {
+    observers: HashMap<usize, Box<dyn Observer>>,
+    next_observer_id: usize,
+}
+
+impl Observable {
+    pub fn new() -> Self {
+        Self {
+            observers: HashMap::new(),
+            next_observer_id: 0,
+        }
+    }
+}
+
+impl Subject for Observable {
+    fn attach(&mut self, observer: Box<dyn Observer>) -> usize {
+        let id = self.next_observer_id;
+        self.observers.insert(id, observer);
+        self.next_observer_id += 1;
+        id
+    }
+
+    fn detach(&mut self, observer_id: usize) {
+        self.observers.remove(&observer_id);
+    }
+
+    fn notify(&self, event: &CalculatorEvent) {
+        for observer in self.observers.values() {
+            observer.update(event);
+        }
+    }
+}
+
+pub struct Dsp {}
+
+impl Display for Dsp {
+    fn print(&self, msg: &str) {
+        println!("{}", msg);
+    }
+}
+pub trait Display: Send + Sync {
+    fn print(&self, msg: &str);
+}
+
+pub struct DisplayObserver {
+    display: Arc<Mutex<dyn Display>>,
+}
+
+impl Observer for DisplayObserver {
+    fn update(&self, event: &CalculatorEvent) {
+        let msg = match event {
+            CalculatorEvent::VariableChanged(name, value) => {
+                format!("Variable '{}' changed to {}", name, value)
+            }
+            CalculatorEvent::ResultCalculated(result, expression) => {
+                format!("Result of '{}' is {}", expression, result)
+            }
+            CalculatorEvent::ModeChanged(mode) => format!("Mode changed to '{}'", mode),
+            CalculatorEvent::Error(err) => format!("Error: {}", err),
+        };
+        self.display.lock().unwrap().print(&msg);
+    }
+}
 fn main() {
-    // let schemas = Schemas::load_default();
-    // println!("Default schemas loaded:");
-    // println!("{:#?}", schemas);
+    let mut observable = Observable::new();
+    let observer = DisplayObserver {
+        display: Arc::new(Mutex::new(Dsp {})),
+    };
+    observable.attach(Box::new(observer));
+    observable.notify(&CalculatorEvent::VariableChanged("x".to_string(), 42.0));
 
-    // // Test loading lists.json with embedded schemas
-    // println!("\n--- Testing lists.json with embedded schemas ---");
-    // match persistence::load_validated("lists.json") {
-    //     Ok(data) => {
-    //         println!("✓ Successfully loaded lists.json!");
-    //         println!("  Lists: {}", data.lists.len());
-    //     }
-    //     Err(e) => {
-    //         eprintln!("✗ Failed to load: ĵ}", e);
-    //     }
-    // }
-
-    let timesteps: Vec<Timestep> =
-        persistence::load::<Vec<Timestep>>("/workspaces/experimental/domain/assets/timesteps.json")
-            .unwrap();
-
-    // Multiply the number of objects by 10 for each timestep
-    // for timestep in &mut timesteps {
-    //     let original_objects = timestep.objects.clone();
-    //     for _ in 0..9 {
-    //         timestep.objects.extend(original_objects.clone());
-    //     }
-    //     timestep.num_objects = timestep.objects.len();
-    // }
-
-    // Multiply the number of timesteps 500 times and adjust timestep numbers
-    // let original_timesteps = timesteps.clone();
-    // timesteps.clear();
-    // for i in 0..500 {
-    //     for timestep in &original_timesteps {
-    //         let mut new_timestep = timestep.clone();
-    //         new_timestep.timestep =
-    //             (i as f64 * 0.3 + timestep.timestep as f64 * 0.3).round() / 10.0;
-    //         timesteps.push(new_timestep);
-    //     }
-    // }
-
-    // Save the updated timesteps back to the file using save_json utility
-    // persistence::save_json(
-    //     "/workspaces/experimental/domain/assets/timesteps.json",
-    //     &timesteps,
-    // )
-    // .unwrap();
-
-    println!("Updated timesteps saved successfully.");
-
-    let unified_model: UnifiedModel = timesteps.into();
-    println!("Remodeling to Unified Model done");
-    let _timesteps: Vec<Timestep> = unified_model.into();
-    println!("Remodeling back to Timesteps done");
+    println!("Hello, world!");
 }

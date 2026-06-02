@@ -9,22 +9,269 @@ import {
     StandardButton,
     DatePickerPopup,
 } from "std-widgets.slint";
-import { LineItem, ActionType, Action, FileEntry } from "@components/structs.slint";
+import {
+    LineItem,
+    ActionType,
+    Action,
+    FileEntry,
+    GraphAxis,
+    GraphPoint,
+    GraphPath,
+} from "@components/structs.slint";
 import { FileDialog } from "@components/file-dialog.slint";
 import { LineCard } from "@components/line-card.slint";
 
-export component DataView inherits Dialog {
-    title: "Kalkulierte Daten";
-    callback closeDataView();
+export component GraphWindow inherits Window {
+    title: "3D Graph View";
+    min-width: 760px;
+    min-height: 560px;
+    preferred-width: 880px;
+    preferred-height: 640px;
 
-    StandardButton {
-        kind: close;
-        clicked => {
-            root.closeDataView();
-        }
+    in property <[GraphPoint]> graph-points;
+    in property <[GraphPath]> graph-paths;
+    in property <[GraphAxis]> graph-axes;
+    in-out property <float> yaw-degrees: 32;
+    in-out property <float> pitch-degrees: 22;
+    in-out property <float> view-zoom: 1.0;
+    in-out property <float> view-offset-x: 0;
+    in-out property <float> view-offset-y: 0;
+    callback rotationChanged(float, float);
+
+    changed yaw-degrees => {
+        root.rotationChanged(root.yaw-degrees, root.pitch-degrees);
     }
 
-    AboutSlint { }
+    changed pitch-degrees => {
+        root.rotationChanged(root.yaw-degrees, root.pitch-degrees);
+    }
+
+    Rectangle {
+        background: #f3f6fb;
+
+        Rectangle {
+            x: 24px;
+            y: 24px;
+            width: parent.width - 48px;
+            height: parent.height - 48px;
+            background: #ffffff;
+            border-width: 1px;
+            border-color: #d7dee8;
+            border-radius: 12px;
+
+            Text {
+                x: 20px;
+                y: 18px;
+                text: "Projected 3D scatter: X = line index, Y = numeric field count, Z = numeric sum";
+                color: #1f2937;
+                font-size: 18px;
+                font-weight: 700;
+            }
+
+            Text {
+                x: 20px;
+                y: 48px;
+                text: "Drag the sphere controller to rotate yaw and pitch together.";
+                color: #5b6472;
+                font-size: 13px;
+            }
+
+            sphere-control := Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: 70px;
+                width: 132px;
+                height: 132px;
+                border-radius: self.width / 2;
+                border-width: 1px;
+                border-color: #9fb3cc;
+                background: ta.has-hover ? #dce9f8 : #e6eef9;
+
+                Rectangle {
+                    x: 12px;
+                    y: 12px;
+                    width: parent.width - 24px;
+                    height: parent.height - 24px;
+                    border-radius: self.width / 2;
+                    border-width: 1px;
+                    border-color: #c7d3e3;
+                    background: #f6faff;
+                }
+
+                Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: 8px;
+                    width: 1px;
+                    height: parent.height - 16px;
+                    background: #9fb3cc;
+                }
+
+                Rectangle {
+                    x: 8px;
+                    y: (parent.height - self.height) / 2;
+                    width: parent.width - 16px;
+                    height: 1px;
+                    background: #9fb3cc;
+                }
+
+                // Trackball handle derived from current yaw/pitch angles.
+                handle := Rectangle {
+                    private property <float> normalized-x: (Math.mod(root.yaw-degrees, 360) / 180) - 1;
+                    private property <float> normalized-y: 1 - (Math.mod(root.pitch-degrees, 360) / 180);
+                    width: 16px;
+                    height: 16px;
+                    border-radius: self.width / 2;
+                    border-width: 1px;
+                    border-color: #1e293b;
+                    background: #ffffff;
+                    x: (sphere-control.width / 2) + normalized-x * ((sphere-control.width / 2) - 14px) - (self.width / 2);
+                    y: (sphere-control.height / 2) + normalized-y * ((sphere-control.height / 2) - 14px) - (self.height / 2);
+                }
+
+                Text {
+                    x: -120px;
+                    y: 8px;
+                    width: 110px;
+                    horizontal-alignment: right;
+                    text: "Yaw " + Math.round(root.yaw-degrees) + "°";
+                    color: #334155;
+                    font-size: 12px;
+                }
+
+                Text {
+                    x: parent.width + 10px;
+                    y: 8px;
+                    width: 110px;
+                    text: "Pitch " + Math.round(root.pitch-degrees) + "°";
+                    color: #334155;
+                    font-size: 12px;
+                }
+
+                ta := TouchArea {
+                    mouse-cursor: ta.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+                    moved => {
+                        let cx = sphere-control.width / 2;
+                        let cy = sphere-control.height / 2;
+                        let dx = (ta.mouse-x - cx) / (sphere-control.width / 2);
+                        let dy = (ta.mouse-y - cy) / (sphere-control.height / 2);
+                        root.yaw-degrees = Math.mod(((dx + 1) * 180), 360);
+                        root.pitch-degrees = Math.mod(((1 - dy) * 180), 360);
+                    }
+                }
+            }
+
+            plot-area := Rectangle {
+                x: 20px;
+                y: 214px;
+                width: parent.width - 40px;
+                height: parent.height - 234px;
+                background: #fbfdff;
+                border-width: 1px;
+                border-color: #e5eaf1;
+                border-radius: 10px;
+                clip: true;
+
+                for graph-axis in root.graph-axes: Path {
+                    x: ((plot-area.width * (1 - root.view-zoom)) / 2) + root.view-offset-x * 1px;
+                    y: ((plot-area.height * (1 - root.view-zoom)) / 2) + root.view-offset-y * 1px;
+                    width: parent.width * root.view-zoom;
+                    height: parent.height * root.view-zoom;
+                    viewbox-width: plot-area.width / 1px;
+                    viewbox-height: plot-area.height / 1px;
+                    clip: true;
+                    fill: transparent;
+                    stroke-width: 2px;
+                    stroke-line-cap: round;
+                    opacity: 0.35 + (graph-axis.depth / 3) * 0.25;
+                    stroke: graph-axis.axis == 0 ? #1d4ed8 : graph-axis.axis == 1 ? #b45309 : #047857;
+                    commands: graph-axis.commands;
+                }
+
+                for graph-axis in root.graph-axes: Text {
+                    x: (((graph-axis.label-x * 1px) - (plot-area.width / 2)) * root.view-zoom) + (plot-area.width / 2) + root.view-offset-x * 1px;
+                    y: (((graph-axis.label-y * 1px) - (plot-area.height / 2)) * root.view-zoom) + (plot-area.height / 2) + root.view-offset-y * 1px;
+                    text: graph-axis.label;
+                    color: graph-axis.axis == 0 ? #1d4ed8 : graph-axis.axis == 1 ? #b45309 : #047857;
+                    font-weight: 700;
+                }
+
+                for graph-path in root.graph-paths: Path {
+                    x: ((plot-area.width * (1 - root.view-zoom)) / 2) + root.view-offset-x * 1px;
+                    y: ((plot-area.height * (1 - root.view-zoom)) / 2) + root.view-offset-y * 1px;
+                    width: parent.width * root.view-zoom;
+                    height: parent.height * root.view-zoom;
+                    viewbox-width: plot-area.width / 1px;
+                    viewbox-height: plot-area.height / 1px;
+                    clip: true;
+                    fill: transparent;
+                    stroke-width: 2px;
+                    stroke-line-cap: round;
+                    stroke-line-join: round;
+                    opacity: 0.2 + (graph-path.depth / 3) * 0.35;
+                    stroke: Math.mod(graph-path.series, 5) == 0 ? #115e59 : Math.mod(graph-path.series, 5) == 1 ? #1d4ed8 : Math.mod(graph-path.series, 5) == 2 ? #9a3412 : Math.mod(graph-path.series, 5) == 3 ? #6d28d9 : #9f1239;
+                    commands: graph-path.commands;
+                }
+
+                for point in root.graph-points: Rectangle {
+                    width: point.size * 1px;
+                    height: point.size * 1px;
+                    x: (((point.x * 1px) - (plot-area.width / 2)) * root.view-zoom) + (plot-area.width / 2) + root.view-offset-x * 1px - (self.width / 2);
+                    y: (((point.y * 1px) - (plot-area.height / 2)) * root.view-zoom) + (plot-area.height / 2) + root.view-offset-y * 1px - (self.height / 2);
+                    border-radius: self.width / 2;
+                    border-width: 1px;
+                    border-color: #ffffff;
+                    opacity: 0.45 + (point.depth / 3) * 0.55;
+                    background: Math.mod(point.series, 5) == 0 ? #0f766e : Math.mod(point.series, 5) == 1 ? #2563eb : Math.mod(point.series, 5) == 2 ? #c2410c : Math.mod(point.series, 5) == 3 ? #7c3aed : #be123c;
+                }
+
+                if root.graph-points.length == 0: Text {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                    text: "No calculated points yet. Validate a line and wait for its calculation to finish.";
+                    color: #64748b;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                navigation-touch := TouchArea {
+                    width: parent.width;
+                    height: parent.height;
+                    mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+                    private property <float> last-x: 0;
+                    private property <float> last-y: 0;
+
+                    changed pressed => {
+                        if (self.pressed) {
+                            self.last-x = self.mouse-x / 1px;
+                            self.last-y = self.mouse-y / 1px;
+                        }
+                    }
+
+                    moved => {
+                        let current-x = self.mouse-x / 1px;
+                        let current-y = self.mouse-y / 1px;
+                        root.view-offset-x += current-x - self.last-x;
+                        root.view-offset-y += current-y - self.last-y;
+                        self.last-x = current-x;
+                        self.last-y = current-y;
+                    }
+
+                    scroll-event(event) => {
+                        if (event.delta-y > 0px) {
+                            root.view-zoom = Math.min(4.0, root.view-zoom * 1.1);
+                            return accept;
+                        }
+                        if (event.delta-y < 0px) {
+                            root.view-zoom = Math.max(0.35, root.view-zoom * 0.9);
+                            return accept;
+                        }
+                        reject
+                    }
+                }
+            }
+        }
+    }
 }
 
 
@@ -65,7 +312,7 @@ export component AppWindow inherits Window {
     private property <bool> file-dialog-is-save: true;
 
     callback dispatch(Action);
-    callback openDataView();
+    callback openGraphWindow();
 
     // File path popup
     file-dialog := FileDialog {
@@ -282,6 +529,7 @@ export component AppWindow inherits Window {
                 }
             }
         }
+
         Menu {
             title: "Edit";
             MenuItem {
@@ -328,12 +576,23 @@ export component AppWindow inherits Window {
         }
 
         Menu {
+            title: "View";
+
+            MenuItem {
+                title: "3D Graph";
+                activated => {
+                    root.openGraphWindow();
+                }
+            }
+        }
+
+        Menu {
             title: "Help";
 
             MenuItem {
                 title: "About";
                 activated => {
-                    root.openDataView();
+                    about-dialog.show();
                 }
             }
         }

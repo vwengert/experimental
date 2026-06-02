@@ -24,6 +24,29 @@ export struct LineItem {
     data: [KeyData],
 }
 
+export struct GraphPoint {
+    x: float,
+    y: float,
+    size: float,
+    depth: float,
+    series: int,
+}
+
+export struct GraphPath {
+    commands: string,
+    depth: float,
+    series: int,
+}
+
+export struct GraphAxis {
+    commands: string,
+    label: string,
+    label-x: float,
+    label-y: float,
+    depth: float,
+    axis: int,
+}
+
 export enum ActionType {
     add-line,
     value-changed,
