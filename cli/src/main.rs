@@ -1,161 +1,95 @@
-mod builder;
-mod config;
-mod decorator;
-mod expression;
-mod factory;
-mod token;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
-use crate::expression::Expression;
-use builder::ExpressionBuilder;
-use config::CalculatorConfig;
-use factory::{NumberToken, ScientificFactory, StandardFactory, TokenFactory};
-use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering::SeqCst;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
-use token::{Function, Operator, Token};
-
-pub struct Loop {
-    counter: i32,
+#[derive(Debug, Clone)]
+pub enum CalculatorEvent {
+    VariableChanged(String, f64),
+    ResultCalculated(f64, String),
+    ModeChanged(String),
+    Error(String),
 }
 
-impl Loop {
-    fn increment(&mut self) {
-        self.counter += 1;
-        println!("Incremented counter: {}", self.counter);
-    }
+pub trait Observer: Send + Sync {
+    fn update(&self, event: &CalculatorEvent);
+}
+pub trait Subject {
+    fn attach(&mut self, observer: Box<dyn Observer>) -> usize;
+    fn detach(&mut self, observer_id: usize);
+    fn notify(&self, event: &CalculatorEvent);
 }
 
-pub struct Main {
-    inner: Arc<Mutex<Loop>>,
-    is_running: Arc<AtomicBool>,
+pub struct Observable {
+    observers: HashMap<usize, Box<dyn Observer>>,
+    next_observer_id: usize,
 }
-impl Main {
+
+impl Observable {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(Mutex::new(Loop { counter: 0 })),
-            is_running: Arc::new(AtomicBool::new(false)),
+            observers: HashMap::new(),
+            next_observer_id: 0,
         }
     }
-    pub fn start_timer(&self, delay: Duration) {
-        if self.is_running.swap(true, SeqCst) {
-            println!("Timer is already running");
-            return;
-        }
+}
 
-        let inner_clone = Arc::clone(&self.inner);
-        let is_running_clone = Arc::clone(&self.is_running);
-        thread::spawn(move || {
-            while is_running_clone.load(SeqCst) {
-                thread::sleep(delay);
-                if !is_running_clone.load(SeqCst) {
-                    break;
-                }
-                if let Ok(mut inner) = inner_clone.lock() {
-                    inner.increment()
-                }
+impl Subject for Observable {
+    fn attach(&mut self, observer: Box<dyn Observer>) -> usize {
+        let id = self.next_observer_id;
+        self.observers.insert(id, observer);
+        self.next_observer_id += 1;
+        id
+    }
+
+    fn detach(&mut self, observer_id: usize) {
+        self.observers.remove(&observer_id);
+    }
+
+    fn notify(&self, event: &CalculatorEvent) {
+        for observer in self.observers.values() {
+            observer.update(event);
+        }
+    }
+}
+
+pub struct Dsp {}
+
+impl Display for Dsp {
+    fn print(&self, msg: &str) {
+        println!("{}", msg);
+    }
+}
+pub trait Display: Send + Sync {
+    fn print(&self, msg: &str);
+}
+
+pub struct DisplayObserver {
+    display: Arc<Mutex<dyn Display>>,
+}
+
+impl Observer for DisplayObserver {
+    fn update(&self, event: &CalculatorEvent) {
+        let msg = match event {
+            CalculatorEvent::VariableChanged(name, value) => {
+                format!("Variable '{}' changed to {}", name, value)
             }
-            println!("Timer thread finished");
-        });
-    }
-
-    pub fn stop_timer(&self) {
-        self.is_running.store(false, SeqCst);
-    }
-    pub fn get_count(&self) -> i32 {
-        self.inner.lock().unwrap().counter
+            CalculatorEvent::ResultCalculated(result, expression) => {
+                format!("Result of '{}' is {}", expression, result)
+            }
+            CalculatorEvent::ModeChanged(mode) => format!("Mode changed to '{}'", mode),
+            CalculatorEvent::Error(err) => format!("Error: {}", err),
+        };
+        self.display.lock().unwrap().print(&msg);
     }
 }
-
-pub struct ScientificFunctionExpression {
-    operation: Box<dyn Fn(f64) -> f64>,
-    arg_expression: Box<dyn Expression>,
-    description: String,
-}
-impl ScientificFunctionExpression {
-    pub fn new_sin(arg: Box<dyn Expression>) -> Self {
-        let operation = Box::new(move |angle: f64| f64::sin(angle));
-        Self {
-            operation,
-            arg_expression: arg,
-            description: "sin".to_string(),
-        }
-    }
-}
-impl Expression for ScientificFunctionExpression {
-    fn evaluate(&self, variables: &HashMap<String, f64>) -> Result<f64, String> {
-        let arg_value = self.arg_expression.evaluate(variables)?;
-        Ok((self.operation)(arg_value))
-    }
-    fn to_string(&self) -> String {
-        format!("{} ({})", self.description, self.arg_expression.to_string())
-    }
-    fn precedence(&self) -> u8 {
-        self.arg_expression.precedence()
-    }
-}
-
 fn main() {
-    // Demonstrate Factory Methods
-    let num_token = Token::number(42.0);
-    let op_token = Token::operator(Operator::Add);
-    let func_token = Token::function(Function::Sin);
-    let var_token = Token::variable("x");
+    let mut observable = Observable::new();
+    let observer = DisplayObserver {
+        display: Arc::new(Mutex::new(Dsp {})),
+    };
+    observable.attach(Box::new(observer));
+    observable.notify(&CalculatorEvent::VariableChanged("x".to_string(), 42.0));
 
-    println!(
-        "Created tokens: {:?}, {:?}, {:?}, {:?}",
-        num_token, op_token, func_token, var_token
-    );
-
-    // Demonstrate Factory from string
-    match Token::from_str("3.14") {
-        Ok(token) => println!("Parsed number: {:?}", token),
-        Err(e) => println!("Error: {}", e),
-    }
-
-    // Demonstrate Abstract Factory
-    let standard_factory = StandardFactory;
-    let sci_factory = ScientificFactory;
-
-    let standard_num = standard_factory.create_number("123").unwrap();
-    let sci_num = sci_factory.create_number("1.23e-4").unwrap();
-
-    println!("Standard number: {}", standard_num.format());
-    println!("Scientific number: {}", sci_num.format());
-
-    // Demonstrate Builder pattern
-    let expr = ExpressionBuilder::new()
-        .number(2.0)
-        .operator(Operator::Add)
-        .open_paren()
-        .number(3.0)
-        .operator(Operator::Multiply)
-        .number(4.0)
-        .close_paren()
-        .unwrap() // close_paren returns Result<Self, String>
-        .build()
-        .unwrap();
-
-    println!("Built expression: {:?}", expr);
-
-    // Demonstrate configuration (alternative to Singleton)
-    let default_config = CalculatorConfig::default();
-    let sci_config = CalculatorConfig::scientific();
-
-    println!("Default config: {:?}", default_config);
-    println!("Scientific config: {:?}", sci_config);
-
-    let my_loop = Main::new();
-    my_loop.start_timer(Duration::from_secs(1));
-
-    thread::sleep(Duration::from_secs(10));
-    my_loop.stop_timer();
-    println!("Loop counter after stop: {}", my_loop.get_count());
-    thread::sleep(Duration::from_secs(3));
-    my_loop.start_timer(Duration::from_millis(100));
-    thread::sleep(Duration::from_secs(12));
-    my_loop.stop_timer();
-    println!("Loop counter after stop: {}", my_loop.get_count());
+    println!("Hello, world!");
 }

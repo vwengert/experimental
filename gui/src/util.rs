@@ -4,8 +4,9 @@ use std::rc::Rc;
 use slint::{ModelRc, SharedString, VecModel};
 
 use domain::models::elements::{ElementSchema, FieldSpec, ValueType};
+use domain::utility::calculation::LineCalculationResult;
 
-use crate::{FileEntry, KeyData};
+use crate::{FileEntry, GraphPoint, KeyData};
 
 pub fn build_unit_options(
     spec: &FieldSpec,
@@ -14,10 +15,15 @@ pub fn build_unit_options(
     match &spec.unit {
         None => ModelRc::from(Rc::new(VecModel::<SharedString>::default())),
         Some(unit_type) => {
-            let unit_values: &[String] =
-                units.get(unit_type.as_str()).map(|v| v.as_slice()).unwrap_or(&[]);
+            let unit_values: &[String] = units
+                .get(unit_type.as_str())
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
             ModelRc::from(Rc::new(VecModel::from(
-                unit_values.iter().map(|s| SharedString::from(s.as_str())).collect::<Vec<_>>(),
+                unit_values
+                    .iter()
+                    .map(|s| SharedString::from(s.as_str()))
+                    .collect::<Vec<_>>(),
             )))
         }
     }
@@ -33,7 +39,13 @@ pub fn make_key_data(key: &str, spec: &FieldSpec, units: &HashMap<String, Vec<St
             .map(|s| SharedString::from(s.as_str()))
             .unwrap_or_default(),
     };
-    KeyData { key: SharedString::from(key), value: SharedString::new(), unit, unit_options, is_valid: false }
+    KeyData {
+        key: SharedString::from(key),
+        value: SharedString::new(),
+        unit,
+        unit_options,
+        is_valid: false,
+    }
 }
 
 pub fn build_key_data_for_schema(
@@ -52,10 +64,17 @@ pub fn read_dir_entries(path: &std::path::Path) -> Vec<FileEntry> {
         for entry in read_dir.flatten() {
             let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
             let name = entry.file_name().to_string_lossy().to_string();
-            entries.push(FileEntry { name: SharedString::from(name.as_str()), is_dir });
+            entries.push(FileEntry {
+                name: SharedString::from(name.as_str()),
+                is_dir,
+            });
         }
         // Directories first, then files, both sorted alphabetically
-        entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.as_str().cmp(b.name.as_str())));
+        entries.sort_by(|a, b| {
+            b.is_dir
+                .cmp(&a.is_dir)
+                .then(a.name.as_str().cmp(b.name.as_str()))
+        });
     }
     entries
 }
@@ -71,4 +90,82 @@ pub fn validate_value_str(value: &str, ty: ValueType) -> bool {
         ValueType::Float => value.parse::<f64>().is_ok(),
         ValueType::Bool => matches!(value.to_lowercase().as_str(), "true" | "false"),
     }
+}
+
+pub fn project_graph_points(results: &[Vec<Option<LineCalculationResult>>]) -> Vec<GraphPoint> {
+    let mut flattened: Vec<(usize, &LineCalculationResult)> = results
+        .iter()
+        .enumerate()
+        .flat_map(|(list_idx, entries)| {
+            entries
+                .iter()
+                .filter_map(move |entry| entry.as_ref().map(|result| (list_idx, result)))
+        })
+        .collect();
+
+    if flattened.is_empty() {
+        return Vec::new();
+    }
+
+    let max_line_index = flattened
+        .iter()
+        .map(|(_, result)| result.line_index)
+        .max()
+        .unwrap_or(0) as f32;
+    let max_numeric_count = flattened
+        .iter()
+        .map(|(_, result)| result.numeric_count)
+        .max()
+        .unwrap_or(0) as f32;
+    let min_numeric_sum = flattened
+        .iter()
+        .map(|(_, result)| result.numeric_sum)
+        .fold(f64::INFINITY, f64::min);
+    let max_numeric_sum = flattened
+        .iter()
+        .map(|(_, result)| result.numeric_sum)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let numeric_sum_range = (max_numeric_sum - min_numeric_sum).max(f64::EPSILON) as f32;
+
+    let origin_x = 176.0f32;
+    let origin_y = 340.0f32;
+    let x_basis = (220.0f32, -84.0f32);
+    let y_basis = (-140.0f32, -84.0f32);
+    let z_basis = (0.0f32, -210.0f32);
+
+    let mut points: Vec<GraphPoint> = flattened
+        .drain(..)
+        .map(|(list_idx, result)| {
+            let nx = if max_line_index > 0.0 {
+                result.line_index as f32 / max_line_index
+            } else {
+                0.5
+            };
+            let ny = if max_numeric_count > 0.0 {
+                result.numeric_count as f32 / max_numeric_count
+            } else {
+                0.5
+            };
+            let nz = if numeric_sum_range > 0.0 {
+                ((result.numeric_sum - min_numeric_sum) as f32 / numeric_sum_range).clamp(0.0, 1.0)
+            } else {
+                0.5
+            };
+
+            let x = origin_x + nx * x_basis.0 + ny * y_basis.0 + nz * z_basis.0;
+            let y = origin_y + nx * x_basis.1 + ny * y_basis.1 + nz * z_basis.1;
+            let depth = nx + ny + nz;
+
+            GraphPoint {
+                x,
+                y,
+                size: 10.0 + ny * 8.0 + nz * 4.0,
+                depth,
+                series: list_idx as i32,
+            }
+        })
+        .collect();
+
+    points.sort_by(|left, right| left.depth.total_cmp(&right.depth));
+    points
 }

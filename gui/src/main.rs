@@ -8,7 +8,8 @@ use std::time::Duration;
 mod app_state;
 mod util;
 use app_state::{
-    AllKeyDataModels, AppState, KeyDataModel, KeyDataModelsForList, LineModel, ListModels,
+    AllKeyDataModels, AppState, CalculationResults, CalculationRevisions, GraphPointModel,
+    KeyDataModel, KeyDataModelsForList, LineModel, ListModels,
 };
 use util::read_dir_entries;
 
@@ -57,6 +58,11 @@ fn main() {
             .map(|_| Rc::new(RefCell::new(Vec::<KeyDataModel>::new())) as KeyDataModelsForList)
             .collect(),
     ));
+    let graph_points: GraphPointModel = Rc::new(VecModel::default());
+    let calc_results: CalculationResults =
+        Rc::new(RefCell::new((0..LIST_COUNT).map(|_| Vec::new()).collect()));
+    let calc_revisions: CalculationRevisions =
+        Rc::new(RefCell::new((0..LIST_COUNT).map(|_| Vec::new()).collect()));
 
     let active_list_idx: Rc<RefCell<usize>> = Rc::new(RefCell::new(0));
     let (calc_result_sender, calc_result_receiver) =
@@ -74,6 +80,9 @@ fn main() {
         list_names: list_names_model,
         calc_sender,
         calc_result_receiver: RefCell::new(calc_result_receiver),
+        graph_points: graph_points.clone(),
+        calc_results,
+        calc_revisions,
         app_weak: app.as_weak(),
     });
 
@@ -87,15 +96,11 @@ fn main() {
         state.handle_dispatch(action);
     });
 
-    app.on_openDataView(|| {
-        let dialog = DataView::new().unwrap();
-        dialog.show().unwrap();
-        let dialog_weak = dialog.as_weak();
-        dialog.on_closeDataView(move || {
-            if let Some(dialog) = dialog_weak.upgrade() {
-                dialog.hide().unwrap();
-            }
-        })
+    let graph_points_for_window = graph_points.clone();
+    app.on_openGraphWindow(move || {
+        let window = GraphWindow::new().unwrap();
+        window.set_graph_points(ModelRc::from(graph_points_for_window.clone()));
+        window.show().unwrap();
     });
 
     app.run().unwrap();

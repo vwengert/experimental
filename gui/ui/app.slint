@@ -9,22 +9,142 @@ import {
     StandardButton,
     DatePickerPopup,
 } from "std-widgets.slint";
-import { LineItem, ActionType, Action, FileEntry } from "@components/structs.slint";
+import {
+    LineItem,
+    ActionType,
+    Action,
+    FileEntry,
+    GraphPoint,
+} from "@components/structs.slint";
 import { FileDialog } from "@components/file-dialog.slint";
 import { LineCard } from "@components/line-card.slint";
 
-export component DataView inherits Dialog {
-    title: "Kalkulierte Daten";
-    callback closeDataView();
+export component GraphWindow inherits Window {
+    title: "3D Graph View";
+    min-width: 760px;
+    min-height: 560px;
+    preferred-width: 880px;
+    preferred-height: 640px;
 
-    StandardButton {
-        kind: close;
-        clicked => {
-            root.closeDataView();
+    in property <[GraphPoint]> graph-points;
+
+    Rectangle {
+        background: #f3f6fb;
+
+        Rectangle {
+            x: 24px;
+            y: 24px;
+            width: parent.width - 48px;
+            height: parent.height - 48px;
+            background: #ffffff;
+            border-width: 1px;
+            border-color: #d7dee8;
+            border-radius: 12px;
+
+            Text {
+                x: 20px;
+                y: 18px;
+                text: "Projected 3D scatter: X = line index, Y = numeric field count, Z = numeric sum";
+                color: #1f2937;
+                font-size: 18px;
+                font-weight: 700;
+            }
+
+            Text {
+                x: 20px;
+                y: 48px;
+                text: "Point size follows density, color groups points by list.";
+                color: #5b6472;
+                font-size: 13px;
+            }
+
+            plot-area := Rectangle {
+                x: 20px;
+                y: 86px;
+                width: parent.width - 40px;
+                height: parent.height - 106px;
+                background: #fbfdff;
+                border-width: 1px;
+                border-color: #e5eaf1;
+                border-radius: 10px;
+                clip: true;
+
+                for x-step in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]: Rectangle {
+                    x: 174px + x-step * 22px;
+                    y: 338px - x-step * 8.4px;
+                    width: 5px;
+                    height: 5px;
+                    background: #94a3b8;
+                    border-radius: 3px;
+                }
+
+                for y-step in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]: Rectangle {
+                    x: 174px - y-step * 14px;
+                    y: 338px - y-step * 8.4px;
+                    width: 5px;
+                    height: 5px;
+                    background: #94a3b8;
+                    border-radius: 3px;
+                }
+
+                for z-step in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]: Rectangle {
+                    x: 174px;
+                    y: 338px - z-step * 21px;
+                    width: 5px;
+                    height: 5px;
+                    background: #64748b;
+                    border-radius: 3px;
+                }
+
+                Text {
+                    x: 392px;
+                    y: 236px;
+                    text: "X";
+                    color: #1d4ed8;
+                    font-weight: 700;
+                }
+
+                Text {
+                    x: 18px;
+                    y: 236px;
+                    text: "Y";
+                    color: #b45309;
+                    font-weight: 700;
+                }
+
+                Text {
+                    x: 186px;
+                    y: 108px;
+                    text: "Z";
+                    color: #047857;
+                    font-weight: 700;
+                }
+
+                for point in root.graph-points: Rectangle {
+                    width: point.size * 1px;
+                    height: point.size * 1px;
+                    x: plot-area.x + point.x * 1px - (self.width / 2);
+                    y: plot-area.y + point.y * 1px - (self.height / 2);
+                    border-radius: self.width / 2;
+                    border-width: 1px;
+                    border-color: #ffffff;
+                    opacity: 0.45 + (point.depth / 3) * 0.55;
+                    background: Math.mod(point.series, 5) == 0 ? #0f766e : Math.mod(point.series, 5) == 1 ? #2563eb : Math.mod(point.series, 5) == 2 ? #c2410c : Math.mod(point.series, 5) == 3 ? #7c3aed : #be123c;
+                }
+
+                if root.graph-points.length == 0: Text {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                    text: "No calculated points yet. Validate a line and wait for its calculation to finish.";
+                    color: #64748b;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
         }
     }
-
-    AboutSlint { }
 }
 
 
@@ -65,7 +185,7 @@ export component AppWindow inherits Window {
     private property <bool> file-dialog-is-save: true;
 
     callback dispatch(Action);
-    callback openDataView();
+    callback openGraphWindow();
 
     // File path popup
     file-dialog := FileDialog {
@@ -282,6 +402,7 @@ export component AppWindow inherits Window {
                 }
             }
         }
+
         Menu {
             title: "Edit";
             MenuItem {
@@ -328,12 +449,23 @@ export component AppWindow inherits Window {
         }
 
         Menu {
+            title: "View";
+
+            MenuItem {
+                title: "3D Graph";
+                activated => {
+                    root.openGraphWindow();
+                }
+            }
+        }
+
+        Menu {
             title: "Help";
 
             MenuItem {
                 title: "About";
                 activated => {
-                    root.openDataView();
+                    about-dialog.show();
                 }
             }
         }

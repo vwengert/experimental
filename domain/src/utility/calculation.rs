@@ -68,23 +68,33 @@ pub struct LineCalculationRequest {
     pub list_index: usize,
     pub list_name: String,
     pub line_index: usize,
+    pub request_revision: u64,
     pub line: ItemLine,
 }
 
 impl LineCalculationRequest {
-    pub fn new(list_index: usize, list_name: String, line_index: usize, line: ItemLine) -> Self {
+    pub fn new(
+        list_index: usize,
+        list_name: String,
+        line_index: usize,
+        request_revision: u64,
+        line: ItemLine,
+    ) -> Self {
         Self {
             list_index,
             list_name,
             line_index,
+            request_revision,
             line,
         }
     }
 }
 
+#[derive(Clone)]
 pub struct LineCalculationResult {
     pub list_index: usize,
     pub line_index: usize,
+    pub request_revision: u64,
     pub numeric_count: usize,
     pub numeric_sum: f64,
 }
@@ -145,6 +155,7 @@ pub fn spawn_line_calculation_worker(
             let result = LineCalculationResult {
                 list_index: request.list_index,
                 line_index: request.line_index,
+                request_revision: request.request_revision,
                 numeric_count,
                 numeric_sum,
             };
