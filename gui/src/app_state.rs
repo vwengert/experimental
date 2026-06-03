@@ -804,8 +804,11 @@ impl AppState {
                         continue;
                     }
                     eprintln!(
-                        "[gui] Received result: list_index={}, line_index={}, numeric_count={}, numeric_sum={}",
-                        line_result.list_index, line_result.line_index, line_result.numeric_count, line_result.numeric_sum
+                        "[gui] Received result: list_index={}, line_index={}, x={}, y={}",
+                        line_result.list_index,
+                        line_result.line_index,
+                        line_result.x,
+                        line_result.y
                     );
                     self.store_line_result(line_result.clone());
                     self.rebuild_graph_points();

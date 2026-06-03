@@ -28,18 +28,31 @@ pub struct Object {
 
 impl From<Vec<Timestep>> for UnifiedModel {
     fn from(timesteps: Vec<Timestep>) -> Self {
+        if timesteps.is_empty() {
+            return UnifiedModel {
+                own: UnifiedObject {
+                    name: "own".to_string(),
+                    positions: Vec::new(),
+                },
+                objects: Vec::new(),
+            };
+        }
+
         let max_objects = timesteps
             .iter()
             .map(|timestep| timestep.num_objects)
             .max()
             .unwrap_or(0);
 
+        let own_name = timesteps[0].own.name.clone();
+
         let own_positions: Vec<Position> = timesteps
             .iter()
             .map(|timestep| Position {
-                x: timestep.own.x,
-                y: timestep.own.y,
-                z: timestep.own.z,
+                // Keep the ego axis fixed at the world origin for every timestep.
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
                 timestamp: timestep.timestep,
             })
             .collect();
@@ -52,9 +65,9 @@ impl From<Vec<Timestep>> for UnifiedModel {
                 .filter_map(|timestep| {
                     if i < timestep.objects.len() {
                         Some(Position {
-                            x: timestep.objects[i].x,
-                            y: timestep.objects[i].y,
-                            z: timestep.objects[i].z,
+                            x: timestep.objects[i].x - timestep.own.x,
+                            y: timestep.objects[i].y - timestep.own.y,
+                            z: timestep.objects[i].z - timestep.own.z,
                             timestamp: timestep.timestep,
                         })
                     } else {
@@ -73,7 +86,7 @@ impl From<Vec<Timestep>> for UnifiedModel {
 
         UnifiedModel {
             own: UnifiedObject {
-                name: timesteps[0].own.name.clone(),
+                name: own_name,
                 positions: own_positions,
             },
             objects,
@@ -102,14 +115,83 @@ impl From<UnifiedModel> for Vec<Timestep> {
                 num_objects: model.objects.len(),
                 own: Own {
                     name: model.own.name.clone(),
-                    x: position.x,
-                    y: position.y,
-                    z: position.z,
+                    // Keep own fixed at origin in exported timesteps as well.
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
                 },
                 objects,
             });
         }
 
         timesteps
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Object, Own, Position, Timestep};
+    use crate::models::unified_model::{UnifiedModel, UnifiedObject};
+
+    #[test]
+    fn keeps_own_on_origin_and_offsets_objects() {
+        let timesteps = vec![Timestep {
+            timestep: 1.0,
+            num_objects: 1,
+            own: Own {
+                name: "own".to_string(),
+                x: 10.0,
+                y: -3.0,
+                z: 2.0,
+            },
+            objects: vec![Object {
+                name: "obj".to_string(),
+                x: 13.5,
+                y: -8.0,
+                z: 7.0,
+            }],
+        }];
+
+        let unified: UnifiedModel = timesteps.into();
+
+        assert_eq!(unified.own.positions.len(), 1);
+        assert_eq!(unified.own.positions[0].x, 0.0);
+        assert_eq!(unified.own.positions[0].y, 0.0);
+        assert_eq!(unified.own.positions[0].z, 0.0);
+
+        assert_eq!(unified.objects.len(), 1);
+        assert_eq!(unified.objects[0].positions[0].x, 3.5);
+        assert_eq!(unified.objects[0].positions[0].y, -5.0);
+        assert_eq!(unified.objects[0].positions[0].z, 5.0);
+    }
+
+    #[test]
+    fn exports_timesteps_with_own_on_origin() {
+        let unified = UnifiedModel {
+            own: UnifiedObject {
+                name: "own".to_string(),
+                positions: vec![Position {
+                    x: 12.0,
+                    y: 7.0,
+                    z: -4.0,
+                    timestamp: 2.5,
+                }],
+            },
+            objects: vec![UnifiedObject {
+                name: "obj".to_string(),
+                positions: vec![Position {
+                    x: 1.0,
+                    y: 2.0,
+                    z: 3.0,
+                    timestamp: 2.5,
+                }],
+            }],
+        };
+
+        let timesteps: Vec<Timestep> = unified.into();
+        assert_eq!(timesteps.len(), 1);
+        assert_eq!(timesteps[0].own.x, 0.0);
+        assert_eq!(timesteps[0].own.y, 0.0);
+        assert_eq!(timesteps[0].own.z, 0.0);
     }
 }

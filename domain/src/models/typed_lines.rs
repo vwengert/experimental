@@ -5,9 +5,7 @@ pub use crate::models::error::item_line_conversion_error::ItemLineConversionErro
 pub use crate::models::unit::distance_unit::DistanceUnit;
 pub use crate::models::unit::length_unit::LengthUnit;
 use crate::models::unit::UnitConvertible;
-use crate::utility::parse::{
-    validate_field, validate_field_without_unit,
-};
+use crate::utility::parse::{validate_field, validate_field_without_unit};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValueWithUnit<T, U> {
@@ -46,6 +44,10 @@ pub struct ContainerLine {
 
 impl ContainerLine {
     pub fn calculate(&self) -> Result<(), String> {
+        eprintln!(
+            "[domain-calc][Container] calc-params(width,height,padding)=({:.4}, {:.4}, {:.4})",
+            self.width.value, self.height.value, self.padding.value as f64
+        );
         eprintln!(
             "[domain-calc][Container] width: {}",
             render_all_length_units(self.width.value, self.width.unit)

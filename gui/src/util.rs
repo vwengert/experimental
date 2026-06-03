@@ -17,6 +17,9 @@ struct ProjectedGraphPoint {
     depth: f32,
     series: i32,
     line_index: usize,
+    world_x: f32,
+    world_y: f32,
+    world_z: f32,
 }
 
 #[derive(Clone)]
@@ -129,26 +132,6 @@ fn project_graph_geometry(
         return Vec::new();
     }
 
-    let max_line_index = flattened
-        .iter()
-        .map(|(_, result)| result.line_index)
-        .max()
-        .unwrap_or(0) as f32;
-    let max_numeric_count = flattened
-        .iter()
-        .map(|(_, result)| result.numeric_count)
-        .max()
-        .unwrap_or(0) as f32;
-    let min_numeric_sum = flattened
-        .iter()
-        .map(|(_, result)| result.numeric_sum)
-        .fold(f64::INFINITY, f64::min);
-    let max_numeric_sum = flattened
-        .iter()
-        .map(|(_, result)| result.numeric_sum)
-        .fold(f64::NEG_INFINITY, f64::max);
-    let numeric_sum_range = (max_numeric_sum - min_numeric_sum).max(f64::EPSILON) as f32;
-
     let origin_x = 370.0f32;
     let origin_y = 240.0f32;
     let yaw = yaw_degrees.to_radians();
@@ -163,7 +146,6 @@ fn project_graph_geometry(
         let rotated_z = -world_x * sin_yaw + world_z * cos_yaw;
         let rotated_y = world_y * cos_pitch - rotated_z * sin_pitch;
         let camera_z = world_y * sin_pitch + rotated_z * cos_pitch;
-
         let perspective = 1.0 / (camera_z + 3.2);
         ProjectedPosition {
             x: origin_x + rotated_x * 265.0 * perspective,
@@ -175,36 +157,22 @@ fn project_graph_geometry(
     let mut points: Vec<ProjectedGraphPoint> = flattened
         .drain(..)
         .map(|(list_idx, result)| {
-            let nx = if max_line_index > 0.0 {
-                result.line_index as f32 / max_line_index
-            } else {
-                0.5
-            };
-            let ny = if max_numeric_count > 0.0 {
-                result.numeric_count as f32 / max_numeric_count
-            } else {
-                0.5
-            };
-            let nz = if numeric_sum_range > 0.0 {
-                ((result.numeric_sum - min_numeric_sum) as f32 / numeric_sum_range).clamp(0.0, 1.0)
-            } else {
-                0.5
-            };
-
-            let world_x = nx * 2.0 - 1.0;
-            let world_y = ny * 2.0 - 1.0;
-            let world_z = nz * 2.0 - 1.0;
+            let world_x = result.x as f32;
+            let world_y = result.y as f32;
+            let world_z = result.z as f32;
 
             let projected = project_position(world_x, world_y, world_z);
-            let perspective = 1.0 / (projected.depth - 1.5 + 3.2);
 
             ProjectedGraphPoint {
                 x: projected.x,
                 y: projected.y,
-                size: (10.0 + ny * 6.0 + nz * 4.0) * (0.7 + perspective * 1.6),
+                size: 4.0,
                 depth: projected.depth,
                 series: list_idx as i32,
                 line_index: result.line_index,
+                world_x,
+                world_y,
+                world_z,
             }
         })
         .collect();
@@ -275,7 +243,31 @@ pub fn project_graph_points(
     yaw_degrees: f32,
     pitch_degrees: f32,
 ) -> Vec<GraphPoint> {
-    project_graph_geometry(results, yaw_degrees, pitch_degrees)
+    let projected_points = project_graph_geometry(results, yaw_degrees, pitch_degrees);
+
+    if !projected_points.is_empty() {
+        eprintln!(
+            "[gui-graph] displayed points (count={} yaw={:.1} pitch={:.1})",
+            projected_points.len(),
+            yaw_degrees,
+            pitch_degrees
+        );
+        for point in &projected_points {
+            eprintln!(
+                "[gui-graph] series={} line={} world=({:.3}, {:.3}, {:.3}) screen=({:.2}, {:.2}) depth={:.3}",
+                point.series,
+                point.line_index,
+                point.world_x,
+                point.world_y,
+                point.world_z,
+                point.x,
+                point.y,
+                point.depth
+            );
+        }
+    }
+
+    projected_points
         .into_iter()
         .map(|point| GraphPoint {
             x: point.x,

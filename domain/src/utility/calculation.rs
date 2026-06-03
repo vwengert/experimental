@@ -51,15 +51,17 @@ impl LineGenerator {
         }
     }
 
-    fn collect_numeric_values(&self) -> (usize, f64) {
+    fn collect_numeric_values(&self) -> (f64, f64, f64) {
         match self {
-            Self::Container(container) => (
-                3,
-                container.width.value + container.height.value + container.padding.value as f64,
-            ),
-            Self::Button(_) => (0, 0.0),
-            Self::TextField(text_field) => (1, text_field.max_length.value as f64),
-            Self::Unknown(data) => (data.numeric_count, data.numeric_sum),
+            Self::Container(container) => {
+                let width = container.width.value;
+                let height = container.height.value;
+                let padding = container.padding.value as f64;
+                (width, height, padding)
+            }
+            Self::Button(_) => (0.0, 0.0, 1.0),
+            Self::TextField(_text_field) => (1.0, 1.0, 0.0),
+            Self::Unknown(_data) => (1.0, 1.0, 1.0),
         }
     }
 }
@@ -95,8 +97,9 @@ pub struct LineCalculationResult {
     pub list_index: usize,
     pub line_index: usize,
     pub request_revision: u64,
-    pub numeric_count: usize,
-    pub numeric_sum: f64,
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
 }
 
 pub fn spawn_line_calculation_worker(
@@ -141,23 +144,25 @@ pub fn spawn_line_calculation_worker(
             // Simulate an expensive calculation job.
             thread::sleep(Duration::from_secs(5));
 
-            let (numeric_count, numeric_sum) = generator.collect_numeric_values();
+            let (x, y, z) = generator.collect_numeric_values();
             eprintln!(
-                "[domain-calc] done list=#{} '{}' line=#{} title='{}' numeric_values={} numeric_sum={}",
+                "[domain-calc] done list=#{} '{}' line=#{} title='{}' x={} y={} z={}",
                 request.list_index,
                 request.list_name,
                 request.line_index,
                 generator.title(),
-                numeric_count,
-                numeric_sum
+                x,
+                y,
+                z,
             );
 
             let result = LineCalculationResult {
                 list_index: request.list_index,
                 line_index: request.line_index,
                 request_revision: request.request_revision,
-                numeric_count,
-                numeric_sum,
+                x,
+                y,
+                z,
             };
 
             if let Err(error) = result_sender.send(Ok(result)) {
@@ -249,6 +254,33 @@ mod tests {
         let generator = LineGenerator::from_line(&line, &schemas).unwrap();
         let result = calculate_line_by_generator(&generator);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn container_with_zero_values_produces_zero_calculation_parameters() {
+        let schemas = Schemas::load_default();
+        let line = ItemLine {
+            title: "Container".to_string(),
+            data: vec![
+                ItemSet {
+                    key: "width".to_string(),
+                    value: "0".to_string(),
+                    unit: "px".to_string(),
+                },
+                ItemSet {
+                    key: "height".to_string(),
+                    value: "0".to_string(),
+                    unit: "px".to_string(),
+                },
+                ItemSet {
+                    key: "padding".to_string(),
+                    value: "0".to_string(),
+                    unit: "px".to_string(),
+                },
+            ],
+        };
+
+        let _generator = LineGenerator::from_line(&line, &schemas).unwrap();
     }
 
     #[test]
