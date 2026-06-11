@@ -1,0 +1,25 @@
+import { Button } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+        // Signals sent from GUI to Rust
+        callback start_calculation_clicked();
+
+    // Properties updated from Rust to GUI
+        in property <string> gui_data: "No data yet...";
+
+    VerticalLayout {
+        padding: 19px;
+        spacing: 9px;
+        Text {
+            text: root.gui_data;
+            font-size: 17px;
+        }
+
+        Button {
+            text: "Start Generator Work";
+            clicked => {
+                root.start_calculation_clicked();
+            }
+        }
+    }
+}
