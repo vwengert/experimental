@@ -1,0 +1,66 @@
+// HINWEIS: Hier KEIN VerticalLayout importieren!
+import { ColorPopup } from "color-picker.slint";
+
+export component AppWindow inherits Window {
+    title: "Slint Farbwähler (Aufgeteilt)";
+    min-width: 450px;
+    min-height: 350px;
+    background: #1e1e2e;
+
+    // Das Hauptfenster hält die echten Farbkanäle
+    in-out property <float> current-r: 0.3;
+    in-out property <float> current-g: 0.4;
+    in-out property <float> b: 0.8; // Entspricht current-b aus Rust
+
+    // Textuelle Hex-Anzeige für die UI
+    in-out property <string> hex-display: "#4c66cc";
+
+    // Reicht den fertigen Hex-String an Rust weiter, wenn Accept gedrückt wurde
+    callback final-color-changed(string);
+
+    VerticalLayout {
+        padding: 30px;
+        spacing: 20px;
+        alignment: center;
+
+        color-box := Rectangle {
+            min-height: 100px;
+            border-radius: 12px;
+            background: rgb(root.current-r * 255, root.current-g * 255, root.b * 255);
+
+            TouchArea {
+                height: 100%;
+                width: 100%;
+                clicked => {
+                    popup.show();
+                }
+            }
+
+            Text {
+                text: "Gewählte Farbe: " + root.hex-display;
+                font-size: 18px;
+                color: (root.current-r + root.current-g + root.b) > 1.5 ? #000000 : #ffffff;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    popup := ColorPopup {
+        x: color-box.x + (color-box.width - self.width) / 2;
+        y: color-box.y + color-box.height + 8px;
+
+        initial-r: root.current-r;
+        initial-g: root.current-g;
+        initial-b: root.b;
+
+        accepted(r, g, b) => {
+            root.current-r = r;
+            root.current-g = g;
+            root.b = b;
+            
+            // Wir triggern Rust. Rust berechnet den Hex-String und gibt ihn uns zurück
+            root.final-color-changed("");
+        }
+    }
+}
