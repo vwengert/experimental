@@ -1,0 +1,161 @@
+import { Button, Slider } from "std-widgets.slint";
+
+export component ColorPopup inherits PopupWindow {
+    // Diese Properties halten die Startwerte beim Öffnen
+    in property <float> initial-r: 0.3;
+    in property <float> initial-g: 0.4;
+    in property <float> initial-b: 0.8;
+
+    // Liefert beim Klick auf Accept die drei Float-Werte (0.0 - 1.0) zurück
+    callback accepted(float, float, float);
+
+    width: 320px;
+    close-policy: PopupClosePolicy.close-on-click-outside;
+
+    // Beim Öffnen initialisieren wir die internen Werte einmalig
+    init => {
+        tmp-r = root.initial-r;
+        tmp-g = root.initial-g;
+        tmp-b = root.initial-b;
+    }
+
+    // Interne Variablen für die Slider-Zustände
+    private property <float> tmp-r;
+    private property <float> tmp-g;
+    private property <float> tmp-b;
+
+    Rectangle {
+        background: #252538;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: #45475a;
+        padding: 16px;
+
+        VerticalLayout {
+            spacing: 14px;
+
+            Text {
+                text: "Farbeinstellungen";
+                font-size: 16px;
+                color: #cdd6f4;
+                font-weight: 700;
+            }
+
+            // --- ROT SLIDER ---
+            VerticalLayout {
+                spacing: 4px;
+                HorizontalLayout {
+                    Text {
+                        text: "Rot";
+                        color: #f38ba8;
+                        width: 50px;
+                    }
+
+                    Text {
+                        text: Math.round(root.tmp-r * 255);
+                        color: #a6adc8;
+                        horizontal-alignment: right;
+                    }
+                }
+
+                Slider {
+                    minimum: 0;
+                    maximum: 1;
+                    value: root.tmp-r;
+                    changed(val) => {
+                        root.tmp-r = val;
+                    }
+                }
+            }
+
+            // --- GRÜN SLIDER ---
+            VerticalLayout {
+                spacing: 4px;
+                HorizontalLayout {
+                    Text {
+                        text: "Grün";
+                        color: #a6e3a1;
+                        width: 50px;
+                    }
+
+                    Text {
+                        text: Math.round(root.tmp-g * 255);
+                        color: #a6adc8;
+                        horizontal-alignment: right;
+                    }
+                }
+
+                Slider {
+                    minimum: 0;
+                    maximum: 1;
+                    value: root.tmp-g;
+                    changed(val) => {
+                        root.tmp-g = val;
+                    }
+                }
+            }
+
+            // --- BLAU SLIDER ---
+            VerticalLayout {
+                spacing: 4px;
+                HorizontalLayout {
+                    Text {
+                        text: "Blau";
+                        color: #89b4fa;
+                        width: 50px;
+                    }
+
+                    Text {
+                        text: Math.round(root.tmp-b * 255);
+                        color: #a6adc8;
+                        horizontal-alignment: right;
+                    }
+                }
+
+                Slider {
+                    minimum: 0;
+                    maximum: 1;
+                    value: root.tmp-b;
+                    changed(val) => {
+                        root.tmp-b = val;
+                    }
+                }
+            }
+
+            // --- VORSCHAU INNERHALB DES POPUPS ---
+            Rectangle {
+                min-height: 40px;
+                border-radius: 6px;
+                background: rgb(root.tmp-r * 255, root.tmp-g * 255, root.tmp-b * 255);
+                Text {
+                    text: "Vorschau";
+                    color: (root.tmp-r + root.tmp-g + root.tmp-b) > 1.5 ? #000000 : #ffffff;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    font-size: 14px;
+                }
+            }
+
+            // --- BUTTONS ---
+            HorizontalLayout {
+                spacing: 10px;
+
+                Button {
+                    text: "Decline";
+                    clicked => {
+                        root.close();
+                    }
+                }
+
+                Button {
+                    text: "Accept";
+                    primary: true;
+                    clicked => {
+                        root.accepted(root.tmp-r, root.tmp-g, root.tmp-b);
+                        root.close();
+                    }
+                }
+            }
+        }
+    }
+}
