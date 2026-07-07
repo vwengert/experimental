@@ -1,24 +1,96 @@
 import { Button } from "std-widgets.slint";
 
-export component AppWindow inherits Window {
-        // Signals sent from GUI to Rust
-        callback start_calculation_clicked();
+// export component AppWindow inherits Window {
+//         // Signals sent from GUI to Rust
+//         callback start_calculation_clicked();
 
-    // Properties updated from Rust to GUI
-        in property <string> gui_data: "No data yet...";
+//     // Properties updated from Rust to GUI
+//         in property <string> gui_data: "No data yet...";
 
-    VerticalLayout {
-        padding: 19px;
-        spacing: 9px;
+//     VerticalLayout {
+//         padding: 19px;
+//         spacing: 9px;
+//         Text {
+//             text: root.gui_data;
+//             font-size: 17px;
+//         }
+
+//         Button {
+//             text: "Start Generator Work";
+//             clicked => {
+//                 root.start_calculation_clicked();
+//             }
+//         }
+//     }
+// }
+
+import { Button, VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export component MainWindow inherits Window {
+    title: "Main Application Window";
+    width: 500px;
+    height: 400px;
+
+    // This creates an absolute modal overlay inside your main window layout
+    modal-popup := PopupWindow {
+        close-policy: PopupClosePolicy.no-auto-close;
+
+        // This visual container acts as your "Second Window"
+        Rectangle {
+            background: #2e2e2e; // Match your theme color
+            border-width: 2px;
+            border-color: #555555;
+            border-radius: 8px;
+            width: 320px;
+            height: 200px;
+
+            VerticalBox {
+                padding: 20px;
+                alignment: center;
+                spacing: 15px;
+
+                Text {
+                    text: "Second Window Content";
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                    color: white;
+                }
+
+                Text {
+                    text: "The main window is fully blocked until you close this.";
+                    horizontal-alignment: center;
+                    color: #aaa;
+                }
+
+                HorizontalBox {
+                    alignment: center;
+                    Button {
+                        text: "Close and Unblock";
+                        clicked => {
+                            modal-popup.close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Your actual main window content goes here
+    VerticalBox {
+        padding: 30px;
+        alignment: center;
+
         Text {
-            text: root.gui_data;
-            font-size: 17px;
+            text: "Main Window Content";
+            font-size: 20px;
+            horizontal-alignment: center;
         }
 
         Button {
-            text: "Start Generator Work";
+            text: "Open Second Window (Modal)";
             clicked => {
-                root.start_calculation_clicked();
+                // This triggers the overlay and blocks everything behind it
+                modal-popup.show();
             }
         }
     }

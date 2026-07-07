@@ -56,6 +56,8 @@ export component AppWindow inherits Window {
     // File dialog state
     private property <bool> file-dialog-is-save: true;
 
+    private property <color> app-color: #ff0000;
+
     callback dispatch(Action);
     callback openGraphWindow();
 
@@ -344,7 +346,6 @@ export component AppWindow inherits Window {
     }
 
     VerticalBox {
-
         HorizontalLayout {
             alignment: start;
             padding: 4px;

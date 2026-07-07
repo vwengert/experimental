@@ -6,12 +6,15 @@ use std::rc::Rc;
 use std::time::Duration;
 
 mod app_state;
+mod components;
 mod util;
 use app_state::{
     AllKeyDataModels, AppState, CalculationResults, CalculationRevisions, GraphAxisModel,
     GraphPathModel, GraphPointModel, KeyDataModel, KeyDataModelsForList, LineModel, ListModels,
 };
 use util::read_dir_entries;
+
+use crate::components::{HoldAppWeak, Notifier};
 
 slint::include_modules!();
 
@@ -94,9 +97,15 @@ fn main() {
 
     let poll_state = state.clone();
     let calc_result_timer = Timer::default();
-    calc_result_timer.start(TimerMode::Repeated, Duration::from_millis(100), move || {
-        poll_state.poll_calculation_results();
-    });
+    let weak = HoldAppWeak::new(app.as_weak());
+    calc_result_timer.start(
+        TimerMode::Repeated,
+        Duration::from_millis(10000),
+        move || {
+            poll_state.poll_calculation_results();
+            weak.notify();
+        },
+    );
 
     let dispatch_state = state.clone();
     app.on_dispatch(move |action| {
