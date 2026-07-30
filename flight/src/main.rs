@@ -84,6 +84,7 @@ pub trait StateStrategy {
 // ==========================================
 // 3. Tactical Jet Look-Ahead Utilities
 // ==========================================
+#[allow(clippy::too_many_arguments)]
 pub fn simulate_tactical_steps(
     mut sim_roll: f64,
     mut sim_heading: f64,
@@ -92,7 +93,6 @@ pub fn simulate_tactical_steps(
     speed: f64,
     roll_rate: f64,
     g_load: f64,
-    target_alt: f64,
     sim_roll_state: TacticalRollState,
     sim_pitch_state: TacticalPitchState,
     dt: f64,
@@ -197,7 +197,6 @@ impl StateStrategy for FlightState {
             data.speed,
             data.roll_rate,
             tactical_g_limit,
-            target_altitude,
             roll_state,
             pitch_state,
             dt,
@@ -211,7 +210,7 @@ impl StateStrategy for FlightState {
                 data.current_g = 1.0;
                 if alt_diff.abs() > 2.0 {
                     let dir = alt_diff.signum();
-                    let target = data.max_pitch * dir;
+                    let _target = data.max_pitch * dir;
                     pitch_state = TacticalPitchState::GLimiting;
                 }
             }
@@ -232,7 +231,7 @@ impl StateStrategy for FlightState {
                     }
                 }
             }
-            TacticalPitchState::PitchingIn { target_pitch } => {
+            TacticalPitchState::PitchingIn { target_pitch: _ } => {
                 data.current_g = 1.0;
                 if look_ahead_triggered_pitch {
                     pitch_state = TacticalPitchState::PitchingOut;
@@ -264,7 +263,6 @@ impl StateStrategy for FlightState {
             data.speed,
             data.roll_rate,
             tactical_g_limit,
-            target_altitude,
             roll_state,
             pitch_state,
             dt,
@@ -364,7 +362,7 @@ impl Aircraft {
         target_altitude: f64,
         target_g_load: f64,
     ) {
-        if let Some(FlightState::Navigating { mut data, .. }) = self.state.take() {
+        if let Some(FlightState::Navigating { data, .. }) = self.state.take() {
             let change_rad = turn_angle_deg.to_radians();
             let mut target_heading = (data.heading + change_rad) % (2.0 * PI);
             if target_heading < 0.0 {

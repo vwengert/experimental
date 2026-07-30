@@ -88,8 +88,9 @@ struct Vector3D {
 
 #[derive(Debug, Clone, Copy)]
 struct Attitude {
-    heading: f64,    // Psi (in Radiant)
-    bank: f64,       // Phi (in Radiant)
+    heading: f64, // Psi (in Radiant)
+    bank: f64,    // Phi (in Radiant)
+    #[allow(dead_code)]
     climb_dive: f64, // Theta (in Radiant)
 }
 

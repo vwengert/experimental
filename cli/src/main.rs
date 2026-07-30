@@ -20,6 +20,7 @@ pub trait Subject {
     fn notify(&self, event: &CalculatorEvent);
 }
 
+#[derive(Default)]
 pub struct Observable {
     observers: HashMap<usize, Box<dyn Observer>>,
     next_observer_id: usize,
