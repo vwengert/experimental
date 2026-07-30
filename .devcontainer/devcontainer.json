@@ -7,13 +7,17 @@
     "CARGO_HOME": "/usr/local/cargo",
     "RUSTUP_HOME": "/usr/local/rustup",
     "PATH": "/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-    "DISPLAY": "${localEnv:DISPLAY}"
+    "DISPLAY": "${localEnv:DISPLAY}",
+    "XAUTHORITY": "/home/vscode/.Xauthority"
   },
   "workspaceFolder": "/workspaces/experimental",
   "runArgs": [
     "--userns=keep-id:uid=1000,gid=1000",
     "--security-opt=label=disable",
-    "--volume=/tmp/.X11-unix:/tmp/.X11-unix:rw"
+    "--net=host",
+    "--ipc=host",
+    "--volume=/tmp/.X11-unix:/tmp/.X11-unix:rw",
+    "--volume=/home/${localEnv:USER}/.Xauthority:/home/vscode/.Xauthority:rw"
   ],
   "postCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config cmake clang libfontconfig1-dev libxkbcommon-x11-0 libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxrender-dev libxcb1-dev libinput10 x11-apps && sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/* && rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy && rustup default 1.90.0 && cargo install cargo-binstall --version=~1.18 --locked && cargo binstall --no-confirm --disable-telemetry bacon cargo-audit cargo-nextest ripgrep",
   "customizations": {
