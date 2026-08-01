@@ -19,7 +19,6 @@
   },
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "runArgs": [
-    "--userns=keep-id:uid=1000,gid=1000",
     "--security-opt=label=disable",
     "--net=host",
     "--ipc=host",
@@ -32,7 +31,7 @@
         "zerotaskx.rust-extension-pack",
         "davidanson.vscode-markdownlint",
         "ms-vscode.test-adapter-converter",
-        "hbenl.vscode-test-explorer", 
+        "hbenl.vscode-test-explorer",
         "likec4.likec4-vscode",
         "esbenp.prettier-vscode"
       ]

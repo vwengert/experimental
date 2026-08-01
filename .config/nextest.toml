@@ -1,0 +1,5 @@
+[profile.default]
+fail-fast = false
+
+[profile.ci]
+junit = { path = "nextest-report.xml" }

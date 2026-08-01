@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: [main, master]
 
-permissions:
-  contents: read
-  packages: write
-
 jobs:
   devcontainer-ci:
     runs-on: ubuntu-latest
@@ -17,46 +13,39 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: login GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare target directory for test results
+        run: |
+          mkdir -p target/nextest/ci
+          mkdir -p .cargo_cache
+          chmod -R 777 target .cargo_cache
 
-      - name: activate Rust Cache
-        uses: Swatinem/rust-cache@v2
+      - name: Activate Rust Cache
+        uses: swatinem/rust-cache@v2
         with:
           workspaces: |
-            . -> target
+            . -> target/nextest-ci
+          shared-key: "devcontainer-cargo-cache"
 
-      - name: build and test Devcontainer
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and test Devcontainer
         uses: devcontainers/ci@v0.3
         with:
-          imageName: ghcr.io/${{ github.repository }}/devcontainer
-          cacheFrom: ghcr.io/${{ github.repository }}/devcontainer:latest
-          containerEngine: podman
-          runCmd: cargo nextest run --profile ci --junit-xml target/nextest-report.xml
+          cacheFrom: ghcr.io/${{ github.repository }}/devcontainer
+          skipContainerUserIdUpdate: true
+          push: never
+          runCmd: cargo nextest run --profile ci
 
-      - name: upload test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results
-          path: target/nextest-report.xml
-
-      - name: run security audit
+      - name: Run security audit
         if: success() || failure()
         uses: devcontainers/ci@v0.3
         with:
-          imageName: ghcr.io/${{ github.repository }}/devcontainer
-          cacheFrom: ghcr.io/${{ github.repository }}/devcontainer:latest
-          containerEngine: podman
-          runCmd: cargo audit --allow-warnings --json | target/audit-report.json
-
-      - name: upload security audit report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: security-audit-report
-          path: target/audit-report.json
+          cacheFrom: ghcr.io/${{ github.repository }}/devcontainer
+          skipContainerUserIdUpdate: true
+          push: never
+          runCmd: cargo audit --format json > target/audit-report.json
