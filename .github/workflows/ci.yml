@@ -35,6 +35,7 @@ jobs:
         with:
           imageName: ghcr.io/${{ github.repository }}/devcontainer
           cacheFrom: ghcr.io/${{ github.repository }}/devcontainer:latest
+          containerEngine: podman
           runCmd: cargo nextest run --profile ci --junit-xml target/nextest-report.xml
 
       - name: upload test results
@@ -46,10 +47,11 @@ jobs:
 
       - name: run security audit
         if: success() || failure()
-        uses: devcontainers/ci@v1
+        uses: devcontainers/ci@v0.3
         with:
           imageName: ghcr.io/${{ github.repository }}/devcontainer
           cacheFrom: ghcr.io/${{ github.repository }}/devcontainer:latest
+          containerEngine: podman
           runCmd: cargo audit --allow-warnings --json | target/audit-report.json
 
       - name: upload security audit report

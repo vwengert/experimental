@@ -1,6 +1,6 @@
 # Build, Test, and Run
 
-[![Experimental GUI](../../actions/workflows/ci.yml/badge.svg)](../../actions)
+[![Experimental](../../actions/workflows/ci.yml/badge.svg)](../../actions)
 
 ## Setup path
 
